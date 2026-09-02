@@ -1,3 +1,0 @@
----
-name: decision-permit-gate
----
