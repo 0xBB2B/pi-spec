@@ -40,7 +40,7 @@ draft ─用户确认需求─▶ confirmed ─planner 完成─▶ planned ─�
 
 ## 阶段二：confirmed → planned
 
-派 planner，任务提示只含：requirements.md 路径、仓库根路径。planner 返回后核对 tasks.md 满足 spec-docs 约束（files 不相交才 parallel、AC 全覆盖、depends_on 只向前），不满足则带具体违规项重派。通过 → `status: planned`，commit。
+派 planner，任务提示只含：requirements.md 路径、仓库根路径。planner 报告需求超限并给出拆分建议时，不进入 planned：把需求退回 `draft`，按拆分建议与用户确认后拆成多个需求目录，各自重新确认。planner 返回 tasks.md 后核对其满足 spec-docs 约束（任务数 ≤ 6、每任务生产文件 ≤ 2 且 AC ≤ 3、无两个任务共享生产文件、files 不相交才 parallel、AC 全覆盖、depends_on 只向前），不满足则带具体违规项重派。通过 → `status: planned`，commit。
 
 ## 阶段三：planned → executing
 

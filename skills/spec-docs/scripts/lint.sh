@@ -35,6 +35,11 @@ acids=$(grep -oE '^### AC-[0-9]+' "$f" | grep -oE 'AC-[0-9]+' || true)
 [[ -n "$rids" ]] || fail "requirements.md 至少需要一个 R 条目"
 [[ -n "$acids" ]] || fail "requirements.md 至少需要一个 AC 条目"
 
+effective_r_count=$(grep -E '^### R-[0-9]+' "$f" | grep -vc '\[作废\]' || true)
+(( effective_r_count <= 6 )) || fail "有效 R 不得超过 6 条，当前 $effective_r_count 条，需拆成多个需求"
+ac_count=$(printf '%s\n' "$acids" | grep -c . || true)
+(( ac_count <= 8 )) || fail "AC 不得超过 8 条，当前 $ac_count 条，需拆成多个需求"
+
 r_duplicates=$(printf '%s\n' "$rids" | sort | uniq -d)
 [[ -z "$r_duplicates" ]] || fail "R 编号不得重复: $r_duplicates"
 ac_duplicates=$(printf '%s\n' "$acids" | sort | uniq -d)
