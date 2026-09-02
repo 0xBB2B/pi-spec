@@ -20,6 +20,7 @@ description: 已有功能改动 / 修 bug / 结果与预期不符的处理流程
 | 需求变更 | 实际行为 = 规范，用户想要不同的行为 |
 
 4. 用 `ask_user_question` 请用户确认归因，附复现证据与引用的规则原文。
+5. 用户确认后调用 `decision_record`（actor ai，source `spec-revise/attribution`，scope 为受影响的 R/AC，decision 为归因结论，basis 为复现证据，alternatives 为另外两种归因，action 为第二步的路由）；用户改选其他归因时以 actor user 记录该选择。记录成功后才进入第二步。
 
 ## 第二步：决定现场
 

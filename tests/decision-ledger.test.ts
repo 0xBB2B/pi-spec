@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createFixture as createSharedFixture, REQUIREMENT_SLUG, removeFixtures, requirementDocument, type Fixture } from "./helpers/requirement-fixture.ts";
 
 const PACKAGE_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const SPEC_DOCS_DIR = join(PACKAGE_ROOT, "skills", "spec-docs");
@@ -11,13 +11,9 @@ const WRITER_PATH = join(SPEC_DOCS_DIR, "scripts", "decision-ledger.ts");
 const LINT_PATH = join(SPEC_DOCS_DIR, "scripts", "lint.sh");
 const TEMPLATE_PATH = join(SPEC_DOCS_DIR, "requirements.template.md");
 const SKILL_PATH = join(SPEC_DOCS_DIR, "SKILL.md");
-const REQUIREMENT_SLUG = "fixture-decision";
-
 const tempRoots: string[] = [];
 
-afterEach(async () => {
-  await Promise.all(tempRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
-});
+afterEach(() => removeFixtures(tempRoots));
 
 type DecisionId = `AI-${number}` | `USER-${number}`;
 type Effect =
@@ -65,17 +61,6 @@ type WriterApi = {
   captureAcceptedFreeze(input: { requirementDir: string }): Promise<void>;
 };
 
-type Fixture = {
-  root: string;
-  requirementDir: string;
-  requirements: string;
-  design: string;
-  tasks: string;
-  acceptance: string;
-  ai: string;
-  user: string;
-};
-
 type CommandResult = {
   exitCode: number;
   stdout: string;
@@ -88,85 +73,6 @@ function sha256(value: string): string {
 
 function jsonLine(value: object): string {
   return `${JSON.stringify(value)}\n`;
-}
-
-function requirementDocument(status: "draft" | "confirmed" | "accepted" = "draft"): string {
-  return `---
-name: ${REQUIREMENT_SLUG}
-title: 台账 fixture
-status: ${status}
-created: 2026-09-01
----
-
-# 台账 fixture
-
-## 1. 背景
-
-用户需要可审计的已形成决定。
-
-## 2. 目标与非目标
-
-### 非目标
-
-- 不记录未形成选择的问题。
-
-### 目标
-
-- 每项材料性决定恰好一行。
-
-## 3. 术语
-
-| 术语 | 定义 |
-|---|---|
-| 材料性决定 | 会影响后续动作的已形成选择。 |
-
-## 4. 需求
-
-### R-1 记录已形成决定
-
-当材料性决定形成时，系统应在动作前记录该决定。
-
-## 5. 行为方案
-
-用户形成选择后获得可观察的记录结果。
-
-## 6. 边界与已知坑
-
-- 失败与重试：记录失败时不执行动作。
-
-## 7. 验收标准
-
-### AC-1 记录已形成决定  ← R-1
-- 触发: 操作 形成一个材料性决定
-- Given: 对应需求台账可写
-- When: 用户确认选择
-- Then: 对应台账增加一行完整记录
-`;
-}
-
-async function createFixture(status: "draft" | "confirmed" | "accepted" = "draft"): Promise<Fixture> {
-  const root = await mkdtemp(join(tmpdir(), "decision-ledger-"));
-  tempRoots.push(root);
-  const requirementDir = join(root, `2026-09-01.${REQUIREMENT_SLUG}`);
-  await mkdir(requirementDir);
-  const fixture: Fixture = {
-    root,
-    requirementDir,
-    requirements: join(requirementDir, "requirements.md"),
-    design: join(requirementDir, "design.md"),
-    tasks: join(requirementDir, "tasks.md"),
-    acceptance: join(requirementDir, "acceptance.md"),
-    ai: join(requirementDir, "ai-decisions.jsonl"),
-    user: join(requirementDir, "user-decisions.jsonl"),
-  };
-
-  await writeFile(fixture.requirements, requirementDocument(status));
-  await Promise.all([
-    writeFile(fixture.design, "# 设计\n"),
-    writeFile(fixture.tasks, "---\nname: fixture-decision\n---\n"),
-    writeFile(fixture.acceptance, "---\nresult: rejected\ndate: 2026-09-01\n---\n"),
-  ]);
-  return fixture;
 }
 
 async function run(command: string[], cwd = PACKAGE_ROOT): Promise<CommandResult> {
@@ -295,7 +201,7 @@ function expectStrictlyIncreasingIds(records: Record<string, unknown>[]): void {
 
 describe("canonical v1 decision ledger", () => {
   test("creates the six-file package only for a fresh draft and never overwrites a pre-existing ledger", async () => {
-    const draft = await createFixture("draft");
+    const draft = await createSharedFixture(tempRoots, "draft");
     await initialize(draft);
 
     expect(await readFile(draft.ai, "utf8")).toBe("");
@@ -313,7 +219,7 @@ describe("canonical v1 decision ledger", () => {
       "user-decisions.jsonl",
     ]);
 
-    const confirmed = await createFixture("confirmed");
+    const confirmed = await createSharedFixture(tempRoots, "confirmed");
     const confirmedResult = await writerCli("init", "--requirement-dir", confirmed.requirementDir);
     expect(confirmedResult.exitCode, "init must reject a non-draft requirement").not.toBe(0);
 
@@ -324,7 +230,7 @@ describe("canonical v1 decision ledger", () => {
   });
 
   test("accepts only complete material canonical decisions and appends exactly one closed-schema line", async () => {
-    const fixture = await createFixture();
+    const fixture = await createSharedFixture(tempRoots);
     await initialize(fixture);
     const api = await writerApi();
 
@@ -415,7 +321,7 @@ describe("canonical v1 decision ledger", () => {
   });
 
   test("allocates monotonic ids across holes and permits only a new-to-earlier acyclic supersedes reference", async () => {
-    const fixture = await createFixture();
+    const fixture = await createSharedFixture(tempRoots);
     await initialize(fixture);
     await writeFile(fixture.ai, `${jsonLine(canonicalAi("AI-001"))}${jsonLine(canonicalAi("AI-003"))}`);
     const api = await writerApi();
@@ -439,7 +345,7 @@ describe("canonical v1 decision ledger", () => {
   });
 
   test("serializes concurrent appenders and validates both ledgers before a receipt is returned", async () => {
-    const fixture = await createFixture();
+    const fixture = await createSharedFixture(tempRoots);
     await initialize(fixture);
     const api = await writerApi();
 
@@ -466,7 +372,7 @@ describe("canonical v1 decision ledger", () => {
   });
 
   test("rejects malformed peer state before append, leaves no receipt for an associated action, and never repairs it by rewrite", async () => {
-    const fixture = await createFixture();
+    const fixture = await createSharedFixture(tempRoots);
     await initialize(fixture);
     await writeFile(fixture.user, '{"id":"USER-001"\n');
     const api = await writerApi();
@@ -488,7 +394,7 @@ describe("canonical v1 decision ledger", () => {
   });
 
   test("accepted requirements freeze all four deliveries while exactly one target-ledger line may append", async () => {
-    const fixture = await createFixture();
+    const fixture = await createSharedFixture(tempRoots);
     await initialize(fixture);
     await writeFile(fixture.requirements, requirementDocument("accepted"));
     const api = await writerApi();
@@ -539,7 +445,7 @@ describe("canonical v1 decision ledger", () => {
   });
 
   test("lint rejects an eighth decision section and incomplete R/AC coverage", async () => {
-    const fixture = await createFixture();
+    const fixture = await createSharedFixture(tempRoots);
     await writeFile(fixture.ai, jsonLine(canonicalAi("AI-001")));
     await writeFile(fixture.user, jsonLine(canonicalUser("USER-001")));
 
@@ -558,7 +464,7 @@ describe("canonical v1 decision ledger", () => {
   });
 
   test("lint and the writer reject legacy event/status records rather than parsing or rewriting them", async () => {
-    const fixture = await createFixture();
+    const fixture = await createSharedFixture(tempRoots);
     await writeFile(
       fixture.ai,
       jsonLine({

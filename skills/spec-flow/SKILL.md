@@ -34,9 +34,9 @@ draft ─用户确认需求─▶ confirmed ─planner 完成─▶ planned ─�
 ## 阶段一：draft
 
 1. 新需求：读取 `.pi-spec/spec/` 中相关功能域文件作为现状（不存在即现状为空）；按 `<YYYY-MM-DD>.<slug>` 建目录，复制模板落盘，`status: draft`；确保 `.pi-spec/.cache/.gitignore` 存在。
-2. 按 AGENTS.md 的递进式澄清逐维度提问。**每收口一个维度立即写盘**：更新对应章节，并在第 8 节把该维度的问题记为“已定”，新冒出的问题记为“待定”。
-3. 第 8 节无“待定”、每条 R 有 AC 覆盖、lint PASS 后，向用户完整展示文档并请求确认。
-4. 用户确认 → `status: confirmed`，建分支（分支名 = slug，按项目 git 惯例），commit。
+2. 按递进式澄清逐维度提问。用户在给出的具体选项中作出选择时，先调用 `decision_record`（actor user，impact 写该选择对需求的约束）再写盘；AI 按项目惯例自行决定内部取向时调用 `decision_record`（actor ai）。未回答、忽略或取消的问题不记录。**每收口一个维度立即写盘**：更新对应章节。
+3. 没有未收口的维度、每条 R 有 AC 覆盖、lint PASS 后，向用户完整展示文档并请求确认。
+4. 用户确认 → 调用 `decision_record`（actor user，source `spec-flow/draft-confirm`，impact 为需求进入 confirmed 并允许规划）；记录成功后 `status: confirmed`，建分支（分支名 = slug，按项目 git 惯例），commit。记录失败则停止，状态保持 draft。
 
 ## 阶段二：confirmed → planned
 
@@ -44,7 +44,7 @@ draft ─用户确认需求─▶ confirmed ─planner 完成─▶ planned ─�
 
 ## 阶段三：planned → executing
 
-按下面的调度规则算出全部并行组，向用户展示“组 → 任务 → 触碰文件”并请求确认。确认 → `status: executing`。
+按下面的调度规则算出全部并行组，向用户展示“组 → 任务 → 触碰文件”并请求确认。确认 → 调用 `decision_record`（actor user，source `spec-flow/group-confirm`，impact 为按该分组并发执行）；记录成功后 `status: executing`。
 
 ## 阶段四：executing
 
@@ -410,7 +410,7 @@ return { verdict: "PASS", acceptanceResult }
 
 1. 定位现场：扫描 `.pi-spec/requirements/*/requirements.md`，取 `status` 不为 `accepted` 的目录。恰一个直接续；多个用 `ask_user_question` 让用户选；零个报告“没有未完成的需求”并停止。
 2. 按 `status` 进入对应阶段：
-   - `draft`：读第 8 节“待定”项，从第一条继续澄清；已定项不重问。
+   - `draft`：依据当前文档内容重新识别缺失信息，从第一个缺失维度继续澄清；已写入的内容不重问。
    - `confirmed`：重派 planner（幂等覆盖）。
    - `planned`：重新展示并行组求确认。
    - `accepting`：先执行旧任务扫描；若存在 `status: done` 且 `step != review`，退回 `executing` 并补审，不直接重跑验收；否则整体重跑验收。

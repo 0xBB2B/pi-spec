@@ -9,9 +9,11 @@ pi 的需求驱动开发流程包。把「澄清需求 → 黑盒需求文档 �
 | `skills/` | spec-docs（需求包格式）、spec-flow（需求生命周期）、spec-revise（改动与修复归因）、spec-sync（规范与代码对账）、git-commit、git-push |
 | `prompts/` | `/spec-new`、`/spec-resume`、`/spec-revise`、`/spec-sync` |
 | `agents/` | planner、test-engineer、impl-engineer、review-engineer、acceptance-reviewer、pre-reviewer 子代理定义 |
-| `rules/` | 自动注入 system prompt 的流程规则：任务分流、执行授权、递进式澄清 |
+| `rules/` | 自动注入 system prompt 的流程规则：任务分流、执行授权、递进式澄清、决策记录 |
 | `extensions/rules.ts` | 每轮对话前把 `rules/*.md` 按文件名顺序追加到 system prompt |
 | `extensions/agents-bridge.ts` | 会话启动时把 `agents/*.md` 符号链接到 `~/.pi/agent/agents/` |
+| `extensions/decision-record.ts` | 注册 `decision_record` 工具：经材料性检查把一条 AI 或用户决定追加到需求目录的决策台账并返回回执 |
+| `tests/` | `bun test tests` |
 
 ## 安装
 
