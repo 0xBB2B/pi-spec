@@ -35,7 +35,7 @@ draft ─用户确认需求─▶ confirmed ─planner 完成─▶ planned ─�
 
 1. 新需求：读取 `.pi-spec/spec/` 中相关功能域文件作为现状（不存在即现状为空）；按 `<YYYY-MM-DD>.<slug>` 建目录，复制模板落盘，`status: draft`，建立 `tasks/INDEX.md` 与 `acceptance.md` 占位后运行 spec-docs 的 `init`；确保 `.pi-spec/.cache/.gitignore` 存在。
 2. 按递进式澄清逐维度提问。用户在给出的具体选项中作出选择时，先调用 `decision_record`（actor user，impact 写该选择对需求的约束）再写盘；AI 按项目惯例自行决定内部取向时调用 `decision_record`（actor ai）。未回答、忽略或取消的问题不记录。**每收口一个维度立即写盘**：更新对应章节。
-3. 没有未收口的维度、每条 R 有 AC 覆盖、lint PASS 后，向用户完整展示文档并请求确认。
+3. 没有未收口的维度、每条 R 有 AC 覆盖、lint PASS 后，请求用户确认：只给出文件路径和本轮变更摘要（改动了哪些章节、R、AC 各一句话），不在对话中回显文档正文，用户自行打开文件核对。
 4. 用户确认 → 调用 `decision_record`（actor user，source `spec-flow/draft-confirm`，impact 为需求进入 confirmed 并允许规划）；记录成功后 `status: confirmed`，建分支（分支名 = slug，按项目 git 惯例），commit。记录失败则停止，状态保持 draft。
 
 ## 阶段二：confirmed → planned
