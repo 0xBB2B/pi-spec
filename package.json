@@ -1,0 +1,19 @@
+{
+  "name": "@0xbb2b/pi-spec",
+  "version": "0.1.0",
+  "description": "pi 的需求驱动开发流程包：spec-flow / spec-docs / spec-revise / spec-sync / git-commit / git-push 技能、TDD 子代理定义、提示模板与流程规则注入",
+  "type": "module",
+  "keywords": ["pi-package", "spec", "tdd", "workflow"],
+  "files": ["agents", "extensions", "prompts", "rules", "skills", "README.md"],
+  "pi": {
+    "extensions": ["./extensions"],
+    "skills": ["./skills"],
+    "prompts": ["./prompts"]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
