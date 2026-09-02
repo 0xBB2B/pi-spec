@@ -1,6 +1,6 @@
 ---
 name: spec-flow
-description: 需求全生命周期流程——澄清需求 → 黑盒需求文档经用户确认 → planner 产出白盒设计与任务清单 → 按依赖并发派工 test-engineer/impl-engineer/review-engineer → acceptance-reviewer 黑盒验收；status、结构化 TDD 门禁与安全续接规则。用户提出全新功能或需求（无对应需求文档）时加载；/spec-new 与 /spec-resume 为强制入口；只由主 agent 加载。
+description: 需求全生命周期流程——澄清需求 → 黑盒需求文档经用户确认 → planner 产出一任务一文件的任务集 → 按依赖并发派工 test-engineer/impl-engineer/review-engineer → acceptance-reviewer 黑盒验收；status、结构化 TDD 门禁与安全续接规则。用户提出全新功能或需求（无对应需求文档）时加载；/spec-new 与 /spec-resume 为强制入口；只由主 agent 加载。
 ---
 
 # spec-flow：需求生命周期
@@ -13,8 +13,8 @@ description: 需求全生命周期流程——澄清需求 → 黑盒需求文�
 
 | 角色 | 产出 | 派工方式 |
 |---|---|---|
-| 主 agent（你） | requirements.md、tasks.md 状态、commit | — |
-| planner | design.md、tasks.md | 直接 Agent 工具；planner 是 StructuredOutput 门禁的例外 |
+| 主 agent（你） | requirements.md、任务文件的运行字段、commit | — |
+| planner | tasks/INDEX.md 与 tasks/NN-<name>.md | 直接 Agent 工具；planner 是 StructuredOutput 门禁的例外 |
 | test-engineer | 结构化 Test 证据 | 每任务一个 SubagentWorkflow 的 `agent(..., { agentType, schema })` |
 | impl-engineer | 结构化 Impl 证据 | 同一 SubagentWorkflow 串行调用 |
 | review-engineer | 结构化 Review 证据 | 同一 SubagentWorkflow 串行调用 |
@@ -33,14 +33,14 @@ draft ─用户确认需求─▶ confirmed ─planner 完成─▶ planned ─�
 
 ## 阶段一：draft
 
-1. 新需求：读取 `.pi-spec/spec/` 中相关功能域文件作为现状（不存在即现状为空）；按 `<YYYY-MM-DD>.<slug>` 建目录，复制模板落盘，`status: draft`；确保 `.pi-spec/.cache/.gitignore` 存在。
+1. 新需求：读取 `.pi-spec/spec/` 中相关功能域文件作为现状（不存在即现状为空）；按 `<YYYY-MM-DD>.<slug>` 建目录，复制模板落盘，`status: draft`，建立 `tasks/INDEX.md` 与 `acceptance.md` 占位后运行 spec-docs 的 `init`；确保 `.pi-spec/.cache/.gitignore` 存在。
 2. 按递进式澄清逐维度提问。用户在给出的具体选项中作出选择时，先调用 `decision_record`（actor user，impact 写该选择对需求的约束）再写盘；AI 按项目惯例自行决定内部取向时调用 `decision_record`（actor ai）。未回答、忽略或取消的问题不记录。**每收口一个维度立即写盘**：更新对应章节。
 3. 没有未收口的维度、每条 R 有 AC 覆盖、lint PASS 后，向用户完整展示文档并请求确认。
 4. 用户确认 → 调用 `decision_record`（actor user，source `spec-flow/draft-confirm`，impact 为需求进入 confirmed 并允许规划）；记录成功后 `status: confirmed`，建分支（分支名 = slug，按项目 git 惯例），commit。记录失败则停止，状态保持 draft。
 
 ## 阶段二：confirmed → planned
 
-派 planner，任务提示只含：requirements.md 路径、仓库根路径。planner 报告需求超限并给出拆分建议时，不进入 planned：把需求退回 `draft`，按拆分建议与用户确认后拆成多个需求目录，各自重新确认。planner 返回 tasks.md 后核对其满足 spec-docs 约束（任务数 ≤ 6、每任务生产文件 ≤ 2 且 AC ≤ 3、无两个任务共享生产文件、files 不相交才 parallel、AC 全覆盖、depends_on 只向前），不满足则带具体违规项重派。通过 → `status: planned`，commit。
+派 planner，任务提示只含：requirements.md 路径、仓库根路径。planner 报告需求超限并给出拆分建议时，不进入 planned：把需求退回 `draft`，按拆分建议与用户确认后拆成多个需求目录，各自重新确认。planner 返回后核对 `tasks/` 满足 spec-docs 约束（每任务生产文件 ≤ 2 且 AC ≤ 3、正文 ≤ 200 行且业务规则与验证方式非空、无两个任务共享生产文件、files 不相交才 parallel、AC 全覆盖、depends_on 只向前、INDEX.md 列全），不满足则带具体违规项重派。通过 → `status: planned`，commit。
 
 ## 阶段三：planned → executing
 
@@ -54,11 +54,11 @@ draft ─用户确认需求─▶ confirmed ─planner 完成─▶ planned ─�
 - 并行组 = 就绪任务中 `parallel: true` 且 `files` 两两不相交的子集，一次并发派出；其余串行。
 - 任一任务 `failed` → 停止派新任务，向用户报告原因并等待裁决；不自动重试。
 - 任何 TDD 任务必须使用一个独立的 SubagentWorkflow，严格串行 `test-engineer → impl-engineer → review-engineer`；后一阶段不得在前一阶段可信完成前启动，三个阶段不得重叠或跳过。
-- 并行 T-n 任务必须分别、各自独立创建一个 SubagentWorkflow，形成多个同级 workflow；每个 workflow 的标题由任务的 `meta.name` 提供，各自产生 workflow run id，并分别记录在对应任务的 `tasks.agent`；不得把多个任务合并或包裹到同一个 SubagentWorkflow。
+- 并行 T-n 任务必须分别、各自独立创建一个 SubagentWorkflow，形成多个同级 workflow；每个 workflow 的标题由任务的 `meta.name` 提供，各自产生 workflow run id，并分别记录在对应任务文件 frontmatter 的 `agent`；不得把多个任务合并或包裹到同一个 SubagentWorkflow。
 
 ### 单任务状态与写盘顺序
 
-写盘顺序是续接正确性的前提，不得调换：每任务固定执行 `test → impl → review → 结构化 PASS → verify → commit/done`。每次阶段切换先写入新的 `step`、清空 `agent`，再启动 workflow 对应阶段；`tasks.agent` 记录 workflow run id，而不是报告对象。workflow 精确阶段由 progress/journal 表示。
+写盘顺序是续接正确性的前提，不得调换：每任务固定执行 `test → impl → review → 结构化 PASS → verify → commit/done`。每次阶段切换先写入新的 `step`、清空 `agent`，再启动 workflow 对应阶段；任务文件的 `agent` 记录 workflow run id，而不是报告对象。workflow 精确阶段由 progress/journal 表示。
 
 1. 写 `status: doing`、`step: test`，清空 `agent`，再启动 TDD SubagentWorkflow。只有结构化 Test PASS 才能进入 impl。
 2. 可信 Red 或可信 Green baseline PASS 后写 `step: impl`，清空 `agent`，在同一 workflow 中调用 impl-engineer。baseline 必须走 `no-change-review`，不得跳过 test、impl、review；测试全绿不得自动或直接视为可信 Green baseline。
@@ -66,7 +66,7 @@ draft ─用户确认需求─▶ confirmed ─planner 完成─▶ planned ─�
 4. review-engineer 只有返回结构化明确 PASS，才运行 `verify`；verify 退出码非 0、代理失败或证据不足 → `status: failed`、`step: review`、`note: <简短原因>`。
 5. 只有 verify 退出码为 0 后才按 git-commit skill 提交，message 含 `T-n`；有提交时写 `commit`，再写 `status: done`，并将 `step` 保持为 `review`。
 
-派工提示必须包含：requirements.md 中该任务 `refs` 涉及的 R/AC 原文、design.md 相关章节、`files`、`verify`；test-engineer 额外收到“只改测试”，impl-engineer 额外收到 Test 结构化证据与失败测试，review-engineer 额外收到 R/AC、design、files、实际 diff、Test/Impl 结构化证据和 verify 命令及证据。
+派工提示只需给出任务文件路径，不再摘录拼贴：test-engineer 读该文件的业务规则与验证方式块，并额外收到“只改测试”；impl-engineer 读涉及文件、成品定义、新增第三方依赖、函数清单、协作关系块，并额外收到 Test 结构化证据与失败测试；review-engineer 读整份任务文件，并额外收到实际 diff、Test/Impl 结构化证据和 verify 命令及证据。
 
 所有 Schema 缺失、workflow 返回 null/空结果、非法输出或校验失败、phase/专用字段矛盾或不一致均记录为 FAIL。上述 FAIL、没有明确 PASS、代理失败、证据不足等非 PASS 结果均写为 `status: failed` 与 `note: <简短原因>`，停止派发新任务和 acceptance；不自动重试或返修。Review 失败后不得派发后续阶段，停止派发并阻断 accepting/黑盒验收。不得使用 JSON.parse、正则、首行、文本 JSON、Markdown 或 summary/evidence 中的 PASS/PASS 子串推断裁决。
 
@@ -206,7 +206,7 @@ function isReviewPass(testResult, implResult, result) {
 
 ### 单 workflow 串行调用
 
-每个 T-n 任务均生成一个独立的内联 SubagentWorkflow。主 agent 根据任务编号、任务标题、`refs` 对应的需求与验收标准、design 改动点和测试策略，生成任务专用的 workflow 元数据与节点文案；不得用 `parallel()` 包装三个阶段，只有前一语义 PASS 才调用下一次 `agent`。以下是 T-1 的完整成品示例：
+每个 T-n 任务均生成一个独立的内联 SubagentWorkflow。主 agent 根据任务文件的编号、标题、目标与验证方式，生成任务专用的 workflow 元数据与节点文案；不得用 `parallel()` 包装三个阶段，只有前一语义 PASS 才调用下一次 `agent`。以下是 T-1 的完整成品示例：
 
 ```javascript
 export const meta = {
@@ -259,16 +259,7 @@ return { verdict: "PASS", testResult, implResult, reviewResult }
 
 脚本生成时，`meta` 必须是纯字面量；标题、description、phase detail 和 label 先完成 JSON 字符串转义，再写入对应任务的内联脚本。`meta.name` 是唯一 workflow 总标题事实源，`meta.phases[].title` 与 `phase()` 参数逐字一致；`agentType` 只负责角色路由，label 只负责节点可见标题。不同并行任务分别生成并调用各自的脚本，不得在一个脚本中遍历多个 T-n。
 
-结构化对象 `testResult`、`implResult`、`reviewResult` 仅作为 workflow 局部变量与返回值传递，不得写入 reports、报告文件或 requirements。tasks.agent 可记录 workflow run id（`wf_...`），不记录 Agent 报告对象。
-
-### T-3 引导顺序
-
-T-3 是结构化机制的引导任务，安装后必须用新 workflow 对既有 Test/Impl 证据进行结构化复核，之后才 Review/完成：
-
-1. 保留当前 `doing/test`、agent、note、commit 与已有测试执行历史；Test 阶段先扩展失败契约测试。
-2. Impl 阶段安装本设计的 TDD workflow、Schema 与角色契约；可信 Green baseline 也必须写 `step: impl`，派 impl-engineer 做 no-op/最小复核，再写 `step: review`。
-3. T-3 进入最终 Review/完成前，使用刚安装的 workflow 重新调用三个角色：test-engineer 将既有可信 Red/测试执行证据提交为 TEST_SCHEMA 对象，impl-engineer 将当前 Green 证据提交为 IMPL_SCHEMA 对象，review-engineer 再结构化审查。证据不足、对象非法或空结果即 T-3 failed；不得解析引导前自然语言报告放行。
-4. T-3 完成后恢复等待中的 T-1；T-1 的 review 必须通过单 Agent SubagentWorkflow + REVIEW_SCHEMA 补审。T-1 完成后再按 tasks.md 依次实施 T-4 与 T-5。
+结构化对象 `testResult`、`implResult`、`reviewResult` 仅作为 workflow 局部变量与返回值传递，不得写入 reports、报告文件或 requirements。任务文件的 `agent` 可记录 workflow run id（`wf_...`），不记录 Agent 报告对象。
 
 ## 阶段五：accepting
 

@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { readFile, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { readdir, readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createFixture as createSharedFixture, REQUIREMENT_SLUG, removeFixtures, requirementDocument, type Fixture } from "./helpers/requirement-fixture.ts";
 
@@ -200,22 +201,17 @@ function expectStrictlyIncreasingIds(records: Record<string, unknown>[]): void {
 }
 
 describe("canonical v1 decision ledger", () => {
-  test("creates the six-file package only for a fresh draft and never overwrites a pre-existing ledger", async () => {
+  test("creates the requirement package only for a fresh draft and never overwrites a pre-existing ledger", async () => {
     const draft = await createSharedFixture(tempRoots, "draft");
     await initialize(draft);
 
     expect(await readFile(draft.ai, "utf8")).toBe("");
     expect(await readFile(draft.user, "utf8")).toBe("");
-    expect(
-      [draft.requirements, draft.design, draft.tasks, draft.acceptance, draft.ai, draft.user]
-        .map((path) => path.split("/").at(-1))
-        .sort(),
-    ).toEqual([
+    expect((await readdir(draft.requirementDir)).sort()).toEqual([
       "acceptance.md",
       "ai-decisions.jsonl",
-      "design.md",
       "requirements.md",
-      "tasks.md",
+      "tasks",
       "user-decisions.jsonl",
     ]);
 
@@ -393,7 +389,7 @@ describe("canonical v1 decision ledger", () => {
     expect(validation.exitCode, "validation must fail instead of normalizing a malformed existing ledger").not.toBe(0);
   });
 
-  test("accepted requirements freeze all four deliveries while exactly one target-ledger line may append", async () => {
+  test("accepted requirements freeze contract, task files and acceptance while exactly one target-ledger line may append", async () => {
     const fixture = await createSharedFixture(tempRoots);
     await initialize(fixture);
     await writeFile(fixture.requirements, requirementDocument("accepted"));
@@ -401,7 +397,7 @@ describe("canonical v1 decision ledger", () => {
     await api.captureAcceptedFreeze({ requirementDir: fixture.requirementDir });
 
     const deliveryBefore = await Promise.all(
-      [fixture.requirements, fixture.design, fixture.tasks, fixture.acceptance].map((path) => readFile(path, "utf8")),
+      [fixture.requirements, fixture.tasksIndex, fixture.acceptance].map((path) => readFile(path, "utf8")),
     );
     const userBefore = await readFile(fixture.user, "utf8");
     const aiBefore = await readFile(fixture.ai, "utf8");
@@ -413,17 +409,20 @@ describe("canonical v1 decision ledger", () => {
     expect(await readFile(fixture.user, "utf8")).toBe(userBefore);
     expect(
       await Promise.all(
-        [fixture.requirements, fixture.design, fixture.tasks, fixture.acceptance].map((path) => readFile(path, "utf8")),
+        [fixture.requirements, fixture.tasksIndex, fixture.acceptance].map((path) => readFile(path, "utf8")),
       ),
     ).toEqual(deliveryBefore);
 
-    await writeFile(fixture.design, "# 被篡改的 accepted 设计\n");
     const failedPrefix = await readFile(fixture.ai, "utf8");
+    await writeFile(join(fixture.tasksDir, "01-extra.md"), "# accepted 后新增的任务文件\n");
+    await expect(api.appendDecision(aiInput(fixture, { decision: "新增任务文件不应绕过冻结" }))).rejects.toThrow();
+    expect(await readFile(fixture.ai, "utf8")).toBe(failedPrefix);
+    await writeFile(fixture.tasksIndex, "# 被篡改的 accepted 任务索引\n");
     await expect(api.appendDecision(aiInput(fixture, { decision: "不应绕过冻结" }))).rejects.toThrow();
     expect(await readFile(fixture.ai, "utf8")).toBe(failedPrefix);
   });
 
-  test("requirements template, lint, and skill define only the seven-section current contract and the six-file draft package", async () => {
+  test("requirements template, lint, and skill define only the seven-section current contract and the draft package", async () => {
     const [template, skill] = await Promise.all([Bun.file(TEMPLATE_PATH).text(), Bun.file(SKILL_PATH).text()]);
     const sections = [...template.matchAll(/^## (\d+)\./gm)].map(([, section]) => section);
 
@@ -440,7 +439,7 @@ describe("canonical v1 decision ledger", () => {
       /draft[\s\S]{0,220}(?:当前内容|当前 draft)[\s\S]{0,220}(?:重新识别|重新澄清)[\s\S]{0,160}(?:缺失信息|缺失)/,
     );
     expect(skill, "accepted packages freeze deliveries and only permit ledger append").toMatch(
-      /accepted[\s\S]{0,280}(?:requirements|契约)[\s\S]{0,280}(?:design|设计)[\s\S]{0,280}(?:tasks|任务)[\s\S]{0,280}(?:acceptance|验收)[\s\S]{0,280}(?:仅|只)[\s\S]{0,180}(?:台账|ledger)[\s\S]{0,160}(?:追加|append)/,
+      /accepted[\s\S]{0,280}(?:requirements|契约)[\s\S]{0,280}(?:tasks|任务)[\s\S]{0,280}(?:acceptance|验收)[\s\S]{0,280}(?:仅|只)[\s\S]{0,180}(?:台账|ledger)[\s\S]{0,160}(?:追加|append)/,
     );
   });
 

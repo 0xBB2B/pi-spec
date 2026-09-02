@@ -8,8 +8,8 @@ export type Fixture = {
   root: string;
   requirementDir: string;
   requirements: string;
-  design: string;
-  tasks: string;
+  tasksDir: string;
+  tasksIndex: string;
   acceptance: string;
   ai: string;
   user: string;
@@ -81,17 +81,17 @@ export async function createFixture(
     root,
     requirementDir,
     requirements: join(requirementDir, "requirements.md"),
-    design: join(requirementDir, "design.md"),
-    tasks: join(requirementDir, "tasks.md"),
+    tasksDir: join(requirementDir, "tasks"),
+    tasksIndex: join(requirementDir, "tasks", "INDEX.md"),
     acceptance: join(requirementDir, "acceptance.md"),
     ai: join(requirementDir, "ai-decisions.jsonl"),
     user: join(requirementDir, "user-decisions.jsonl"),
   };
 
   await writeFile(fixture.requirements, requirementDocument(status));
+  await mkdir(fixture.tasksDir);
   await Promise.all([
-    writeFile(fixture.design, "# 设计\n"),
-    writeFile(fixture.tasks, "---\nname: fixture-decision\n---\n"),
+    writeFile(fixture.tasksIndex, "# 任务索引\n"),
     writeFile(fixture.acceptance, "---\nresult: rejected\ndate: 2026-09-01\n---\n"),
   ]);
   return fixture;

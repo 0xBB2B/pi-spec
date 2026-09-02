@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, open, readFile, rm, stat } from "node:fs/promises";
+import { mkdir, open, readFile, readdir, rm, stat } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 
 type Actor = "ai" | "user";
@@ -55,8 +55,7 @@ type PackagePaths = {
   requirementDir: string;
   slug: string;
   requirements: string;
-  design: string;
-  tasks: string;
+  tasksDir: string;
   acceptance: string;
   ai: string;
   user: string;
@@ -132,7 +131,8 @@ const USER_INPUT_KEYS = [
   "supersedes",
   "materiality",
 ];
-const DELIVERY_NAMES = ["requirements.md", "design.md", "tasks.md", "acceptance.md"] as const;
+const DELIVERY_FILES = ["requirements.md", "acceptance.md"] as const;
+const TASKS_DIR = "tasks";
 const LOCK_TIMEOUT_MS = 10_000;
 const LOCK_RETRY_MS = 5;
 
@@ -309,8 +309,7 @@ function pathsFor(requirementDir: string): PackagePaths {
     requirementDir: absolute,
     slug,
     requirements: join(absolute, "requirements.md"),
-    design: join(absolute, "design.md"),
-    tasks: join(absolute, "tasks.md"),
+    tasksDir: join(absolute, TASKS_DIR),
     acceptance: join(absolute, "acceptance.md"),
     ai: join(absolute, "ai-decisions.jsonl"),
     user: join(absolute, "user-decisions.jsonl"),
@@ -341,7 +340,27 @@ async function packageStatus(paths: PackagePaths): Promise<RequirementStatus> {
 }
 
 async function assertDeliveryPackage(paths: PackagePaths): Promise<void> {
-  for (const name of DELIVERY_NAMES) await assertRegularFile(join(paths.requirementDir, name), name);
+  for (const name of DELIVERY_FILES) await assertRegularFile(join(paths.requirementDir, name), name);
+  try {
+    if (!(await stat(paths.tasksDir)).isDirectory()) fail(`${TASKS_DIR} must be a directory`);
+  } catch (error) {
+    if (error instanceof DecisionLedgerError) throw error;
+    fail(`${TASKS_DIR} directory is missing`);
+  }
+}
+
+async function listDeliveryFiles(paths: PackagePaths): Promise<string[]> {
+  const files: string[] = [...DELIVERY_FILES];
+  const walk = async (dir: string, prefix: string): Promise<void> => {
+    for (const entry of await readdir(dir, { withFileTypes: true })) {
+      const relative = `${prefix}/${entry.name}`;
+      if (entry.isDirectory()) await walk(join(dir, entry.name), relative);
+      else if (entry.isFile()) files.push(relative);
+      else fail(`${relative} must be a regular file or directory`);
+    }
+  };
+  await walk(paths.tasksDir, TASKS_DIR);
+  return files.sort();
 }
 
 function parseLedgerText(bytes: Buffer, path: string, actor: Actor, slug: string): LedgerSnapshot {
@@ -399,8 +418,9 @@ async function assertAcceptedFreeze(paths: PackagePaths): Promise<void> {
   }
   assertDate(value.capturedAt, "accepted freeze capturedAt");
   assertObject(value.files, "accepted freeze files");
-  assertExactKeys(value.files, [...DELIVERY_NAMES], "accepted freeze files");
-  for (const name of DELIVERY_NAMES) {
+  const deliveryFiles = await listDeliveryFiles(paths);
+  assertExactKeys(value.files, deliveryFiles, "accepted freeze files");
+  for (const name of deliveryFiles) {
     if (typeof value.files[name] !== "string" || !/^[0-9a-f]{64}$/.test(value.files[name] as string)) {
       fail(`accepted freeze hash for ${name} is invalid`);
     }
@@ -621,7 +641,7 @@ export async function captureAcceptedFreeze(input: { requirementDir: string }): 
     const status = await packageStatus(paths);
     if (status !== "accepted") fail("accepted freeze can only be captured for an accepted package");
     const hashes: Record<string, string> = {};
-    for (const name of DELIVERY_NAMES) hashes[name] = sha256(await readFile(join(paths.requirementDir, name)));
+    for (const name of await listDeliveryFiles(paths)) hashes[name] = sha256(await readFile(join(paths.requirementDir, name)));
     const manifest = {
       schema: "accepted-freeze/v1",
       requirementDir: paths.requirementDir,

@@ -1,13 +1,13 @@
 ---
 name: spec-docs
-description: .pi-spec 需求级六文件包的格式权威源——requirements.md（当前黑盒契约）、design.md（白盒设计）、tasks.md（任务清单）、acceptance.md（验收报告）以及独立的 ai-decisions.jsonl 和 user-decisions.jsonl 决策事实源。
+description: .pi-spec 需求包的格式权威源——requirements.md（当前黑盒契约）、tasks/（一任务一文件的自包含任务，含索引）、acceptance.md（验收报告）以及独立的 ai-decisions.jsonl 和 user-decisions.jsonl 决策事实源。
 ---
 
-# spec-docs：需求级六文件包格式
+# spec-docs：需求包格式
 
 ## 目录与事实源
 
-每个需求目录是一个自包含的六文件包：
+每个需求目录是一个自包含的需求包：
 
 ```
 <repo>/.pi-spec/
@@ -15,8 +15,9 @@ description: .pi-spec 需求级六文件包的格式权威源——requirements.
 ├── spec/<域>.md                         系统当前有效规范
 └── requirements/<YYYY-MM-DD>.<slug>/
     ├── requirements.md                  当前有效黑盒契约
-    ├── design.md                        白盒设计
-    ├── tasks.md                         任务清单
+    ├── tasks/
+    │   ├── INDEX.md                     阶段分组、依赖、被否定的备选方案
+    │   └── NN-<name>.md                 一任务一文件，自包含
     ├── acceptance.md                    黑盒验收报告
     ├── ai-decisions.jsonl               本需求唯一的 AI 决策事实源
     └── user-decisions.jsonl             本需求唯一的用户决策事实源
@@ -24,7 +25,7 @@ description: .pi-spec 需求级六文件包的格式权威源——requirements.
 
 `requirements.md` 只保存当前有效的黑盒契约，不保存决策历史。`ai-decisions.jsonl` 与 `user-decisions.jsonl` 分开保存本需求已形成的材料性决定；一项决定恰好占一行，两个台账不得与其他需求混写。决策台账是追加式事实源，既有行不得改写、删除或重新编号。
 
-新需求先复制 `requirements.template.md`，填写后以 `init --requirement-dir <需求目录>` 创建两个空台账，形成六文件包。`init` 只接受目录名为 `<YYYY-MM-DD>.<slug>`、frontmatter 状态为 `draft` 且两个台账均不存在的需求目录；任何已存在的台账都不覆盖。迁移 mapping 只属于一次性迁移证据，正式 writer 不读取 mapping，也不解析旧记录形状。
+新需求先复制 `requirements.template.md`，建立 `tasks/INDEX.md` 与 `acceptance.md` 占位，再以 `init --requirement-dir <需求目录>` 创建两个空台账，形成需求包。`init` 只接受目录名为 `<YYYY-MM-DD>.<slug>`、frontmatter 状态为 `draft` 且两个台账均不存在的需求目录；任何已存在的台账都不覆盖。迁移 mapping 只属于一次性迁移证据，正式 writer 不读取 mapping，也不解析旧记录形状。
 
 `<slug>` 与现行规范域均为小写英文短横线连接；`<slug>` 同时是分支名。现行规范位于 `spec/<域>.md`，只描述系统此刻的对外行为，不写日期、变更来源或历史对照。
 
@@ -50,7 +51,7 @@ description: .pi-spec 需求级六文件包的格式权威源——requirements.
 6. 边界与已知坑
 7. 验收标准
 
-frontmatter 的 `status` 取值为：`draft`（澄清中）、`confirmed`（用户已确认需求）、`planned`（设计与任务已产出）、`executing`（执行中）、`accepting`（验收中）、`accepted` 或 `rejected`。需求文档只表达当前契约；draft 中断恢复时必须依据当前内容重新识别缺失信息并重新澄清，不从未回答、忽略或取消的问题恢复请求记录。
+frontmatter 的 `status` 取值为：`draft`（澄清中）、`confirmed`（用户已确认需求）、`planned`（任务文件已产出）、`executing`（执行中）、`accepting`（验收中）、`accepted` 或 `rejected`。需求文档只表达当前契约；draft 中断恢复时必须依据当前内容重新识别缺失信息并重新澄清，不从未回答、忽略或取消的问题恢复请求记录。
 
 ### 需求条目 R-n（第 4 节）
 
@@ -64,7 +65,7 @@ frontmatter 的 `status` 取值为：`draft`（澄清中）、`confirmed`（用�
 | 异常行为 | 如果 <非期望条件>，系统应 <行为> |
 | 可选特性 | 若启用 <特性>，系统应 <行为> |
 
-每个功能点至少有一条异常行为需求覆盖失败路径。单个需求最多 6 条有效 R；超出时拆成多个需求目录，各自独立走完流程。一经确认，R-n 永不复用与重排；作废条目保留编号并把标题改为 `[作废] <原标题>`。
+每个功能点至少有一条异常行为需求覆盖失败路径。单个需求最多 12 条有效 R；超出时拆成多个需求目录，各自独立走完流程。一经确认，R-n 永不复用与重排；作废条目保留编号并把标题改为 `[作废] <原标题>`。
 
 ### 验收条目 AC-n（第 7 节）
 
@@ -78,40 +79,49 @@ frontmatter 的 `status` 取值为：`draft`（澄清中）、`confirmed`（用�
 - Then: <可观察输出：返回值 / 响应 / 界面 / 副作用>
 ```
 
-每条 AC 至少回指一个已声明的 R，每条 R 至少被一条 AC 覆盖。单个需求最多 8 条 AC。Then 必须是黑盒可观察结果，不写代码、内部过程或实现细节；数值指标写具体数字和单位。
+每条 AC 至少回指一个已声明的 R，每条 R 至少被一条 AC 覆盖。单个需求最多 20 条 AC。Then 必须是黑盒可观察结果，不写代码、内部过程或实现细节；数值指标写具体数字和单位。
 
 需求文档禁写源码文件路径、目录名、模块名、函数名、类名、变量名、第三方库名、技术栈名、数据库表名和代码块。对外接口的命令行、HTTP 路径和界面元素属于黑盒契约，允许写。
 
-## design.md
+## tasks/
 
-白盒设计允许写路径、模块、函数和库，全文不超过 150 行，章节固定：
+任务目录由 planner 产出，一任务一文件，每个文件自包含：仅凭该文件与仓库现有代码即可完成测试、实现与审查，不写“见 requirements”式引用。
 
-1. 现状：与本需求相关的模块、数据结构和外部接口
-2. 改动点：每个 R-n 落到哪些模块，新增、修改或删除
-3. 文件清单：将要触碰的文件完整路径，标注新增或修改
-4. 数据与接口变更：DDL、API 契约、配置项，内联完整成品；其余改动只用文字描述到函数级
-5. 测试策略：测试框架、目录、每个 AC-n 对应的测试层级
-6. 备选方案与取舍：至少一个被否定的方案及否定理由
+`tasks/INDEX.md` 不超过 30 行：按阶段分组列出任务，每行 `- [T-n <标题>](NN-<name>.md) — <一句话>`，依赖标 `[依赖: T-m]`；末尾列出被否定的备选方案及理由。
 
-## tasks.md
-
-frontmatter 仅 `name: <slug>`。每个任务字段顺序固定：
+`tasks/NN-<name>.md`（`NN` 为两位执行序号，`<name>` 为 kebab-case），不含成品代码块不超过 200 行。frontmatter 字段顺序固定：
 
 ```
-### T-n <标题>
-- depends_on: [T-a, T-b]
-- files: [<完整路径>, ...]
-- refs: [R-x, AC-y, ...]
-- parallel: true | false
-- verify: <一条命令，退出码 0 即通过>
-- status: todo | doing | done | failed
-- step: test | impl | review
-- agent: <当前或最近一次派工的 subagent id>
-- commit: <完成时的 commit hash>
-- note: <失败原因或续接备注>
+---
+id: T-n
+title: <标题>
+depends_on: [T-a, T-b]
+files: [<完整路径>, ...]
+refs: [R-x, AC-y, ...]
+parallel: true | false
+verify: <一条命令，退出码 0 即通过>
+status: todo | doing | done | failed
+step: test | impl | review
+agent: <当前或最近一次派工的 workflow run id>
+commit: <完成时的 commit hash>
+note: <失败原因或续接备注>
+---
 ```
 
-一个任务是一个竖切片：`files` 中生产文件不超过 2 个，`refs` 中 AC 不超过 3 条，预估改动不超过 200 行；触碰同一生产文件的行为合并进同一个任务，不得拆成 `depends_on` 链；单个需求的任务不超过 6 个，超出即需求过大，回到需求拆分。`files` 两两不相交的任务才可并行；`depends_on` 只能引用编号更小的任务；每个 AC-n 至少被一个任务 refs 覆盖。`step` 仅允许 `test`、`impl`、`review`。结构化门禁对象只在 workflow 内存中传递，不写入 tasks、requirements 或额外报告。
+正文章节固定：
+
+1. 目标：一句话，完成后系统具备什么能力
+2. 业务规则：内联复述本任务 refs 的 R/AC 原文
+3. 涉及文件：每行标新建或修改
+4. 成品定义（仅声明式产物时存在）：DDL、API 契约、配置的完整成品，exec 原样落盘不得改写
+5. 新增第三方依赖（仅本任务引入新库时存在）：库名、用途、版本策略
+6. 函数清单：按文件列函数名与职责一句话，不写参数、返回值与实现
+7. 协作关系：函数调用关系与外部依赖
+8. 验证方式：测试入口、测试输入、预期结果、错误场景，只写公开入口不写内部实现路径
+
+三个角色各读其块：test-engineer 读业务规则与验证方式；impl-engineer 读涉及文件、成品定义、新增第三方依赖、函数清单、协作关系；review-engineer 读整份。
+
+一个任务是一个竖切片：`files` 中生产文件不超过 2 个，`refs` 中 AC 不超过 3 条，预估改动不超过 200 行；触碰同一生产文件的行为合并进同一个任务，不得拆成 `depends_on` 链。`files` 两两不相交的任务才可并行；`depends_on` 只能引用编号更小的任务；每个 AC-n 至少被一个任务 refs 覆盖。`status`、`step`、`agent`、`commit`、`note` 五个运行字段只由主 agent 写；结构化门禁对象只在 workflow 内存中传递，不写入任务文件。
 
 ## acceptance.md
 
@@ -212,7 +222,7 @@ append 只能由受材料性检查保护的 `decision_record` 调用，不能通
 
 ## accepted 边界
 
-accepted 后 requirements 契约、design 设计、tasks 任务和 acceptance 验收交付物冻结，只允许向已有的两个 ledger 台账追加与该需求相关的新决定。追加不得改写目标 ledger 的旧字节前缀，不得改变另一 ledger 或四个交付物；缺少或不匹配冻结快照时失败关闭，不能从可疑当前内容自动重建。任何新决定都仍须经过完整 canonical v1 校验、需求隔离、ID 与 supersedes 约束。
+accepted 后 requirements 契约、tasks/ 下全部任务文件和 acceptance 验收交付物冻结，只允许向已有的两个 ledger 台账追加与该需求相关的新决定。追加不得改写目标 ledger 的旧字节前缀，不得改变另一 ledger 或其他交付物；缺少或不匹配冻结快照时失败关闭，不能从可疑当前内容自动重建。任何新决定都仍须经过完整 canonical v1 校验、需求隔离、ID 与 supersedes 约束。
 
 ## 自检与 lint
 
@@ -222,4 +232,4 @@ accepted 后 requirements 契约、design 设计、tasks 任务和 acceptance �
 bash <本 skill 所在目录>/scripts/lint.sh <requirements.md 路径>
 ```
 
-lint 必须确认 requirements 恰好为第 1～7 节、R/AC 互相完整覆盖、有效 R 不超过 6 条且 AC 不超过 8 条、AC 具有固定四行结构，并验证同目录两个 canonical v1 ledger。输出 FAIL 时不得进入 `confirmed`。
+lint 必须确认 requirements 恰好为第 1～7 节、R/AC 互相完整覆盖、有效 R 不超过 12 条且 AC 不超过 20 条、AC 具有固定四行结构，并验证同目录两个 canonical v1 ledger。输出 FAIL 时不得进入 `confirmed`。
