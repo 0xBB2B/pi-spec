@@ -65,12 +65,12 @@ describe("decision_record tool", () => {
     expect(await readFile(fixture.user, "utf8")).toBe("");
   });
 
-  test("appends a user line and rejects a user decision carrying AI-only fields", async () => {
+  test("appends a user line, treating null and empty optional fields as absent", async () => {
     const fixture = await createFixture(tempRoots);
     await initRequirementPackage(fixture.requirementDir);
     const tool = loadTool();
 
-    await tool.execute("call-1", { ...userParams, requirementDir: fixture.requirementDir });
+    await tool.execute("call-1", { ...userParams, requirementDir: fixture.requirementDir, scope: null, basis: null, action: null, supersedes: [] });
     const userLines = (await readFile(fixture.user, "utf8")).trimEnd().split("\n");
     expect(userLines).toHaveLength(1);
     expect(JSON.parse(userLines[0])).toMatchObject({ actor: "user", impact: userParams.impact });
@@ -79,8 +79,12 @@ describe("decision_record tool", () => {
     const before = await readFile(fixture.user, "utf8");
     await expect(
       tool.execute("call-2", { ...userParams, requirementDir: fixture.requirementDir, basis: ["用户不该带依据"] }),
-    ).rejects.toThrow();
+    ).rejects.toThrow("用户决定不得携带 basis");
+    await expect(
+      tool.execute("call-3", { ...aiParams, requirementDir: fixture.requirementDir, impact: "AI 不该带影响" }),
+    ).rejects.toThrow("AI 决定不得携带 impact");
     expect(await readFile(fixture.user, "utf8")).toBe(before);
+    expect(await readFile(fixture.ai, "utf8")).toBe("");
   });
 
   test("fails without writing when a ledger is malformed", async () => {

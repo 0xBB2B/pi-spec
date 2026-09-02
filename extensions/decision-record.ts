@@ -20,12 +20,12 @@ export const DECISION_RECORD_PARAMETERS = Type.Object({
 		minItems: 1,
 		description: "这个决定会改变的方面",
 	}),
-	scope: Type.Optional(Type.String({ minLength: 1, description: "仅 AI 决定：受影响的任务或 R/AC 范围" })),
-	basis: Type.Optional(Type.Array(text, { description: "仅 AI 决定：依据，至少一项" })),
-	action: Type.Optional(Type.String({ minLength: 1, description: "仅 AI 决定：记录后将执行的动作" })),
-	impact: Type.Optional(Type.String({ minLength: 1, description: "仅用户决定：对后续动作的影响" })),
+	scope: Type.Optional(Type.Union([Type.String({ minLength: 1 }), Type.Null()], { description: "仅 AI 决定：受影响的任务或 R/AC 范围；用户决定传 null" })),
+	basis: Type.Optional(Type.Union([Type.Array(text), Type.Null()], { description: "仅 AI 决定：依据，至少一项；用户决定传 null" })),
+	action: Type.Optional(Type.Union([Type.String({ minLength: 1 }), Type.Null()], { description: "仅 AI 决定：记录后将执行的动作；用户决定传 null" })),
+	impact: Type.Optional(Type.Union([Type.String({ minLength: 1 }), Type.Null()], { description: "仅用户决定：对后续动作的影响；AI 决定传 null" })),
 	supersedes: Type.Optional(
-		Type.Array(Type.String({ pattern: "^(AI|USER)-\\d+$" }), { description: "被本决定替代的更早决定编号" }),
+		Type.Union([Type.Array(Type.String({ pattern: "^(AI|USER)-\\d+$" })), Type.Null()], { description: "被本决定替代的更早决定编号；没有则传 null 或空数组" }),
 	),
 });
 
@@ -37,14 +37,31 @@ type Params = {
 	decision: string;
 	alternatives: string[];
 	effects: (typeof EFFECTS)[number][];
-	scope?: string;
-	basis?: string[];
-	action?: string;
-	impact?: string;
-	supersedes?: string[];
+	scope?: string | null;
+	basis?: string[] | null;
+	action?: string | null;
+	impact?: string | null;
+	supersedes?: string[] | null;
 };
 
+function present<T>(value: T | null | undefined): value is T {
+	return value !== null && value !== undefined && !(Array.isArray(value) && value.length === 0);
+}
+
 function toDecisionInput(params: Params): DecisionInput {
+	const aiOnly = ["scope", "basis", "action"].filter((key) => present(params[key as "scope" | "basis" | "action"]));
+	if (params.actor === "user" && aiOnly.length > 0) {
+		throw new Error(`用户决定不得携带 ${aiOnly.join("、")}，请传 null；用户决定只需 impact`);
+	}
+	if (params.actor === "user" && !present(params.impact)) {
+		throw new Error("用户决定必须提供 impact");
+	}
+	if (params.actor === "ai" && present(params.impact)) {
+		throw new Error("AI 决定不得携带 impact，请传 null；AI 决定需要 scope、basis、action");
+	}
+	if (params.actor === "ai" && (!present(params.scope) || !present(params.basis) || !present(params.action))) {
+		throw new Error("AI 决定必须同时提供 scope、basis（至少一项）、action");
+	}
 	const input: DecisionInput = {
 		requirementDir: params.requirementDir,
 		actor: params.actor,
@@ -54,11 +71,11 @@ function toDecisionInput(params: Params): DecisionInput {
 		alternatives: params.alternatives,
 		materiality: { alternativesExist: true, notUniquelyDetermined: true, effects: params.effects },
 	};
-	if (params.scope !== undefined) input.scope = params.scope;
-	if (params.basis !== undefined) input.basis = params.basis;
-	if (params.action !== undefined) input.action = params.action;
-	if (params.impact !== undefined) input.impact = params.impact;
-	if (params.supersedes !== undefined) input.supersedes = params.supersedes as DecisionInput["supersedes"];
+	if (present(params.scope)) input.scope = params.scope;
+	if (present(params.basis)) input.basis = params.basis;
+	if (present(params.action)) input.action = params.action;
+	if (present(params.impact)) input.impact = params.impact;
+	if (present(params.supersedes)) input.supersedes = params.supersedes as DecisionInput["supersedes"];
 	return input;
 }
 
@@ -67,7 +84,7 @@ export default function decisionRecordExtension(pi: ExtensionAPI) {
 		name: "decision_record",
 		label: "Decision Record",
 		description:
-			"把一条材料性决定追加到当前需求目录的决策台账并返回回执。AI 自主形成的决定 actor 为 ai，用户的选择 actor 为 user。必须在执行该决定对应的动作之前调用；调用失败时不得执行动作。",
+			"把一条材料性决定追加到当前需求目录的决策台账并返回回执。AI 自主形成的决定 actor 为 ai（需 scope、basis、action，impact 传 null），用户的选择 actor 为 user（需 impact，scope、basis、action 传 null）。必须在执行该决定对应的动作之前调用；调用失败时不得执行动作。",
 		parameters: DECISION_RECORD_PARAMETERS,
 		async execute(_toolCallId, params) {
 			const receipt = await appendDecision(toDecisionInput(params as Params));
