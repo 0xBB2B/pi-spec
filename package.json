@@ -5,6 +5,9 @@
   "type": "module",
   "keywords": ["pi-package", "spec", "tdd", "workflow"],
   "files": ["agents", "extensions", "prompts", "rules", "skills", "README.md"],
+  "scripts": {
+    "test": "bun test tests"
+  },
   "pi": {
     "extensions": ["./extensions"],
     "skills": ["./skills"],
