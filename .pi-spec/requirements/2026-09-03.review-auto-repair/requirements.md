@@ -71,10 +71,10 @@ created: 2026-09-03
 
 ## 7. 验收标准
 
-### AC-1 NO-GO 阻断放行并进入返修  ← R-1, R-2
+### AC-1 FAIL 阻断放行并进入返修  ← R-1, R-2
 - 触发: 操作 执行一个存在关键测试遗漏的 TDD 任务
 - Given: Red 与 Green 阶段均已完成，但测试未覆盖一条验收标准
-- When: `review-engineer` 返回 NO-GO
+- When: `review-engineer` 返回 FAIL
 - Then: 任务没有完成且黑盒验收未启动，系统记录该问题为可自动解决的问题，自动补充测试与必要实现后再次调用 `review-engineer`
 
 ### AC-2 TDD 审查问题自动修复  ← R-1, R-2

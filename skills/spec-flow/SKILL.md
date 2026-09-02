@@ -58,17 +58,17 @@ draft ─用户确认需求─▶ confirmed ─planner 完成─▶ planned ─�
 
 ### 单任务状态与写盘顺序
 
-写盘顺序是续接正确性的前提，不得调换：每任务固定执行 `test → impl → review → 结构化 GO → verify → commit/done`。每次阶段切换先写入新的 `step`、清空 `agent`，再启动 workflow 对应阶段；`tasks.agent` 记录 workflow run id，而不是报告对象。workflow 精确阶段由 progress/journal 表示。
+写盘顺序是续接正确性的前提，不得调换：每任务固定执行 `test → impl → review → 结构化 PASS → verify → commit/done`。每次阶段切换先写入新的 `step`、清空 `agent`，再启动 workflow 对应阶段；`tasks.agent` 记录 workflow run id，而不是报告对象。workflow 精确阶段由 progress/journal 表示。
 
 1. 写 `status: doing`、`step: test`，清空 `agent`，再启动 TDD SubagentWorkflow。只有结构化 Test PASS 才能进入 impl。
 2. 可信 Red 或可信 Green baseline PASS 后写 `step: impl`，清空 `agent`，在同一 workflow 中调用 impl-engineer。baseline 必须走 `no-change-review`，不得跳过 test、impl、review；测试全绿不得自动或直接视为可信 Green baseline。
-3. 结构化 Impl PASS 后写 `step: review`，清空 `agent`，在同一 workflow 中调用 review-engineer。只有结构化 Review `verdict: PASS`、`reviewDecision: GO`、`verifyReady: true`、路径一致且 traceability/evidence 非空，才是明确 GO。
-4. review-engineer 只有返回结构化明确 GO，才运行 `verify`；verify 退出码非 0、代理失败或证据不足 → `status: failed`、`step: review`、`note: <简短原因>`。
+3. 结构化 Impl PASS 后写 `step: review`，清空 `agent`，在同一 workflow 中调用 review-engineer。只有结构化 Review `verdict: PASS`、`verifyReady: true`、路径一致且 traceability/evidence 非空，才是明确 PASS。
+4. review-engineer 只有返回结构化明确 PASS，才运行 `verify`；verify 退出码非 0、代理失败或证据不足 → `status: failed`、`step: review`、`note: <简短原因>`。
 5. 只有 verify 退出码为 0 后才按 git-commit skill 提交，message 含 `T-n`；有提交时写 `commit`，再写 `status: done`，并将 `step` 保持为 `review`。
 
 派工提示必须包含：requirements.md 中该任务 `refs` 涉及的 R/AC 原文、design.md 相关章节、`files`、`verify`；test-engineer 额外收到“只改测试”，impl-engineer 额外收到 Test 结构化证据与失败测试，review-engineer 额外收到 R/AC、design、files、实际 diff、Test/Impl 结构化证据和 verify 命令及证据。
 
-所有 Schema 缺失、workflow 返回 null/空结果、非法输出或校验失败、phase/专用字段矛盾或不一致均记录为 FAIL。上述 NO-GO、没有明确 GO、代理失败、证据不足等非 GO 结果均写为 `status: failed` 与 `note: <简短原因>`，停止派发新任务和 acceptance；不自动重试或返修。Review 失败后不得派发后续阶段，停止派发并阻断 accepting/黑盒验收。不得使用 JSON.parse、正则、首行、文本 JSON、Markdown 或 summary/evidence 中的 PASS/GO 子串推断裁决。
+所有 Schema 缺失、workflow 返回 null/空结果、非法输出或校验失败、phase/专用字段矛盾或不一致均记录为 FAIL。上述 FAIL、没有明确 PASS、代理失败、证据不足等非 PASS 结果均写为 `status: failed` 与 `note: <简短原因>`，停止派发新任务和 acceptance；不自动重试或返修。Review 失败后不得派发后续阶段，停止派发并阻断 accepting/黑盒验收。不得使用 JSON.parse、正则、首行、文本 JSON、Markdown 或 summary/evidence 中的 PASS/PASS 子串推断裁决。
 
 ### TDD 内联 Schema 与语义谓词
 
@@ -149,19 +149,18 @@ const IMPL_SCHEMA = {
 const REVIEW_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["phase", "verdict", "summary", "issues", "evidence", "reviewDecision", "tddPath", "traceability", "verifyReady"],
+  required: ["phase", "verdict", "summary", "issues", "evidence", "tddPath", "traceability", "verifyReady"],
   properties: {
     ...common,
     verdict: { enum: ["PASS", "FAIL"] },
     phase: { const: "review" },
-    reviewDecision: { enum: ["GO", "NO-GO"] },
     tddPath: { enum: ["red-green", "green-baseline-no-change"] },
     traceability: coverageItems,
     verifyReady: { type: "boolean" },
   },
   oneOf: [
-    { properties: { verdict: { const: "PASS" }, issues: { type: "array", maxItems: 0, items: text }, reviewDecision: { const: "GO" }, traceability: { ...coverageItems, minItems: 1 }, verifyReady: { const: true } } },
-    { properties: { verdict: { const: "FAIL" }, issues: { type: "array", minItems: 1, items: text }, reviewDecision: { const: "NO-GO" }, verifyReady: { const: false } } },
+    { properties: { verdict: { const: "PASS" }, issues: { type: "array", maxItems: 0, items: text }, traceability: { ...coverageItems, minItems: 1 }, verifyReady: { const: true } } },
+    { properties: { verdict: { const: "FAIL" }, issues: { type: "array", minItems: 1, items: text }, verifyReady: { const: false } } },
   ],
 }
 ```
@@ -197,7 +196,6 @@ function isReviewPass(testResult, implResult, result) {
       ? "green-baseline-no-change"
       : "invalid"
   return result.verdict === "PASS"
-    && result.reviewDecision === "GO"
     && result.verifyReady === true
     && result.tddPath === expectedPath
     && result.traceability.length > 0 && result.evidence.length > 0
@@ -274,7 +272,7 @@ T-3 是结构化机制的引导任务，安装后必须用新 workflow 对既有
 
 ## 阶段五：accepting
 
-进入 `accepting` 前置扫描必须识别尚未 `accepted` 需求中 `status: done` 且 `step != review` 的旧任务。若扫描发现旧任务，先将需求从 `accepting` 退回 `executing`，把任务迁移为 `status: doing`、`step: review`，清空 `agent`，保留 `commit`，然后通过带 Schema 的 acceptance/review workflow 补派 review-engineer；非 GO 不进入 acceptance。
+进入 `accepting` 前置扫描必须识别尚未 `accepted` 需求中 `status: done` 且 `step != review` 的旧任务。若扫描发现旧任务，先将需求从 `accepting` 退回 `executing`，把任务迁移为 `status: doing`、`step: review`，清空 `agent`，保留 `commit`，然后通过带 Schema 的 acceptance/review workflow 补派 review-engineer；非 PASS 不进入 acceptance。
 
 只有所有任务均为 `status: done` 且 `step: review` 才允许 `status: accepting`。acceptance workflow 是一个单 Agent `SubagentWorkflow`，只调用一次 `acceptance-reviewer`，并显式传入内联的 `ACCEPTANCE_SCHEMA`；不给 acceptance-reviewer 源码路径。acceptance-reviewer 继续写入调用方已有的 `acceptance.md`，结构化对象仅在该 workflow 的局部变量和内存中传递，不能写入报告或需求文件。
 
@@ -417,7 +415,7 @@ return { verdict: "PASS", acceptanceResult }
    - `rejected`：加载 spec-revise skill 归因并原地回退。
    - `executing`：先扫描旧任务，再对每个任务按下表处理，然后回到调度。
 
-旧任务扫描识别未 accepted 需求中 `status: done` 且 `step != review` 的任务，迁移为 `status: doing`、`step: review`，清空 `agent` 并保留 `commit`；补审必须通过带 Schema 的 workflow，取得结构化 GO 后重新运行 verify，已有 commit 不创建空提交，verify 成功才恢复 done。补审未取得 GO、NO-GO、代理失败或证据不足时写 `status: failed` 与 `note: <原因>`，不进入 acceptance。
+旧任务扫描识别未 accepted 需求中 `status: done` 且 `step != review` 的任务，迁移为 `status: doing`、`step: review`，清空 `agent` 并保留 `commit`；补审必须通过带 Schema 的 workflow，取得结构化 PASS 后重新运行 verify，已有 commit 不创建空提交，verify 成功才恢复 done。补审未取得 PASS、返回 FAIL、代理失败或证据不足时写 `status: failed` 与 `note: <原因>`，不进入 acceptance。
 
 | 任务状态 | 处理 |
 |---|---|
@@ -428,4 +426,4 @@ return { verdict: "PASS", acceptanceResult }
 | `doing` 且 `step: review` | agent 指向仍运行的 workflow 时等待通知；可用相同 run id 以 `resumeFromRunId` 恢复；无法恢复则重派只读审查，不重跑已可证明的 Red/Green |
 | `doing` | 已有 workflow run id 且可恢复则继续；run id、结果或结构化对象无法恢复，或无法证明前序 PASS，则从第一个无法恢复的门禁阶段重新执行，必要时重跑完整三阶段；不得从历史自然语言报告推断 PASS |
 
-同一并行组内多个 `doing` 按上表各自处理后仍可并发续跑，但每个任务内部 `test → impl → review` 严格串行。用户在 `/spec-resume` 后附 `--verify` 时，仅对已取得结构化 review GO 的 `done` 任务重跑 `verify`，失败的改为 `failed`。
+同一并行组内多个 `doing` 按上表各自处理后仍可并发续跑，但每个任务内部 `test → impl → review` 严格串行。用户在 `/spec-resume` 后附 `--verify` 时，仅对已取得结构化 review PASS 的 `done` 任务重跑 `verify`，失败的改为 `failed`。
