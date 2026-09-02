@@ -26,7 +26,7 @@ test-engineer、impl-engineer、review-engineer 仅三个 TDD 角色使用带 Sc
 ## 状态机
 
 ```
-draft ─用户确认需求─▶ confirmed ─planner 完成─▶ planned ─用户确认并行组─▶ executing ─全部 done─▶ accepting ─▶ accepted | rejected
+draft ─用户确认需求─▶ confirmed ─planner 完成─▶ planned ─并行组计算完成─▶ executing ─全部 done─▶ accepting ─▶ accepted | rejected
 ```
 
 `status` 只存在 requirements.md frontmatter 一处，只由主 agent 在门禁处推进。
@@ -44,7 +44,7 @@ draft ─用户确认需求─▶ confirmed ─planner 完成─▶ planned ─�
 
 ## 阶段三：planned → executing
 
-按下面的调度规则算出全部并行组，向用户展示“组 → 任务 → 触碰文件”并请求确认。确认 → 调用 `decision_record`（actor user，source `spec-flow/group-confirm`，impact 为按该分组并发执行）；记录成功后 `status: executing`。
+按下面的调度规则算出全部并行组，向用户汇报“组 → 任务 → 触碰文件”后不等待回复，直接 `status: executing` 并开始派工；进入执行是固定状态转换，不记录决定。只有下列情况停下用 `ask_user_question` 请用户裁决：planner 报告新增第三方依赖（用户同意后以 `decision_record` 记为用户决定再进入执行）、planner 报告歧义与阻塞、或带违规项重派两次后 `tasks/` 仍不满足 spec-docs 约束。
 
 ## 阶段四：executing
 
@@ -401,7 +401,7 @@ return { verdict: "PASS", acceptanceResult }
 2. 按 `status` 进入对应阶段：
    - `draft`：依据当前文档内容重新识别缺失信息，从第一个缺失维度继续澄清；已写入的内容不重问。
    - `confirmed`：重派 planner（幂等覆盖）。
-   - `planned`：重新展示并行组求确认。
+   - `planned`：重新计算并行组并汇报，直接进入 executing。
    - `accepting`：先执行旧任务扫描；若存在 `status: done` 且 `step != review`，退回 `executing` 并补审，不直接重跑验收；否则整体重跑验收。
    - `rejected`：加载 spec-revise skill 归因并原地回退。
    - `executing`：先扫描旧任务，再对每个任务按下表处理，然后回到调度。
