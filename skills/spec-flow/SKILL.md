@@ -52,7 +52,7 @@ draft ─用户确认需求─▶ confirmed ─planner 完成─▶ planned ─�
 
 - 就绪任务 = `status: todo` 且 `depends_on` 全为 `done`。
 - 并行组 = 就绪任务中 `parallel: true` 且 `files` 两两不相交的子集，一次并发派出；其余串行。
-- 任一任务 `failed` → 停止派新任务，向用户报告原因并等待裁决；不自动重试。
+- 任一任务 `failed` → 写入具体原因并停止派发新任务和 acceptance；review-engineer 的 FAIL 按本阶段返修规则处理。
 - 任何 TDD 任务必须使用一个独立的 SubagentWorkflow，严格串行 `test-engineer → impl-engineer → review-engineer`；后一阶段不得在前一阶段可信完成前启动，三个阶段不得重叠或跳过。
 - 并行 T-n 任务必须分别、各自独立创建一个 SubagentWorkflow，形成多个同级 workflow；每个 workflow 的标题由任务的 `meta.name` 提供，各自产生 workflow run id，并分别记录在对应任务文件 frontmatter 的 `agent`；不得把多个任务合并或包裹到同一个 SubagentWorkflow。
 
@@ -68,7 +68,7 @@ draft ─用户确认需求─▶ confirmed ─planner 完成─▶ planned ─�
 
 派工提示只需给出任务文件路径，不再摘录拼贴：test-engineer 读该文件的业务规则与验证方式块，并额外收到“只改测试”；impl-engineer 读涉及文件、成品定义、新增第三方依赖、函数清单、协作关系块，并额外收到 Test 结构化证据与失败测试；review-engineer 读整份任务文件，并额外收到实际 diff、Test/Impl 结构化证据和 verify 命令及证据。
 
-所有 TDD Schema 缺失、workflow 返回 null/空结果、非法输出或校验失败、phase/专用字段矛盾或不一致均记录为 FAIL。上述 FAIL、没有明确 PASS、代理失败、证据不足等非 PASS 结果均写为 `status: failed` 与 `note: <简短原因>`，停止派发新任务和 acceptance；不自动重试或返修。Review 失败后不得派发后续阶段，停止派发并阻断 accepting/黑盒验收。TDD 门禁不得使用 JSON.parse、正则、首行、文本 JSON、Markdown 或 summary/evidence 中的 PASS/PASS 子串推断裁决。
+所有 Test/Impl TDD Schema 缺失、workflow 返回 null/空结果、非法输出或校验失败、phase/专用字段矛盾或不一致均记录为 FAIL；这些非 review-engineer 返修路径的 FAIL、没有明确 PASS、代理失败或证据不足等结果均写为 `status: failed` 与 `note: <简短原因>`，停止派发新任务和 acceptance。review-engineer 返回 FAIL 后，主 agent 逐条归因；可自动解决的问题在 AI 决策台账记录成功后，自动派发同一任务所需的测试或实现修复，再由 review-engineer 重审，期间不询问用户。review-engineer 的修复不得跳过 test-engineer、impl-engineer 与 review-engineer 的结构化 TDD 门禁。修复需要扩大已授权目标、任务 files 或验收标准时，必须作为产品决策询问用户，不得自动返修。AI 决策台账记录失败时显示原因且不派修。review-engineer 与 acceptance-reviewer 分别独立计数，每个门禁最多三轮返修；修复派发失败、非法重审结果或证据不足计入一轮，第三轮仍未通过时记录技术阻塞并停止。Review 失败在返修通过前不得派发后续阶段，不得进入 accepting/黑盒验收。TDD 门禁不得使用 JSON.parse、正则、首行、文本 JSON、Markdown 或 summary/evidence 中的 PASS/PASS 子串推断裁决。
 
 ### TDD 内联 Schema 与语义谓词
 
@@ -265,7 +265,7 @@ return { verdict: "PASS", testResult, implResult, reviewResult }
 
 进入 `accepting` 前置扫描必须识别尚未 `accepted` 需求中 `status: done` 且 `step != review` 的旧任务。若扫描发现旧任务，先将需求从 `accepting` 退回 `executing`，把任务迁移为 `status: doing`、`step: review`，清空 `agent`，保留 `commit`，然后补派 review-engineer；非 PASS 不进入 acceptance。
 
-只有所有任务均为 `status: done` 且 `step: review` 才允许 `status: accepting`。此时主 agent 只能通过 Agent 工具直接调用 `acceptance-reviewer`；验收调用及其最终结果不得要求、启动、承载或传递于任何 workflow，发现任何此类前提必须失败关闭；不得注入运行时结构化输出 Schema。调用参数必须包含本次新增或修改的规则文件路径清单（来自 requirements.md 第 3 节）、调用方指定的唯一 `args.acceptancePath` 报告路径和运行环境启动方式；验收条目为这些规则文件“验收”节的全部条目，`items.id` 写 `<域>/<name>/AC-n`。acceptance-reviewer 先写入该指定报告，再返回唯一严格 JSON；主 agent 只读取报告用于门禁，验收者是该报告的唯一写入者。
+只有所有任务均为 `status: done` 且 `step: review` 才允许 `status: accepting`。此时主 agent 只能通过 Agent 工具直接调用 `acceptance-reviewer`；验收调用及其最终结果不得要求、启动、承载或传递于任何 workflow，发现任何此类前提必须失败关闭；不得注入运行时结构化输出 Schema。调用参数必须包含本次新增或修改的规则文件路径清单（来自 requirements.md 第 3 节）、调用方指定的唯一 `args.acceptancePath` 报告路径和运行环境启动方式；验收条目为这些规则文件“验收”节的全部条目，`items.id` 写 `<域>/<name>/AC-n`。acceptance-reviewer 先写入该指定报告，再返回唯一严格 JSON；主 agent 只读取报告用于门禁，验收者是该报告的唯一写入者。acceptance-reviewer 返回 FAIL 后，主 agent 核对严格 JSON 与指定报告并逐条归因；实现偏差可自动解决时，先记录 AI 决定，再派发修复并完成结构化 TDD 审查，最后直接调用 acceptance-reviewer 重审。acceptance-reviewer 返修期间仍由验收者独占写入指定报告，主 agent 只读取报告。
 
 ### 直接 JSON 门禁与业务谓词
 
@@ -334,10 +334,10 @@ if (!isAcceptancePass(args, result, report)) {
 return { verdict: "PASS" }
 ```
 
-只有对象同时满足 `verdict: PASS`、`acceptanceResult: accepted`、`items` 非空且全部为 `PASS`、`issues` 与 `uncovered` 为空、`reportPath` 精确等于调用方路径，并且指定 `acceptance.md` frontmatter 为 `result: accepted` 时，才可将需求置为 `accepted`。JSON 无效或门禁失败时保留验收者已写入的本次报告，主 agent 不得转录、覆盖或回滚；具体原因写入 `status: failed` 与 `note: <原因>`，需求不得置为 `accepted`，停止后续动作，不自动重试或返修。直接 JSON 结果不写入需求目录。
+只有对象同时满足 `verdict: PASS`、`acceptanceResult: accepted`、`items` 非空且全部为 `PASS`、`issues` 与 `uncovered` 为空、`reportPath` 精确等于调用方路径，并且指定 `acceptance.md` frontmatter 为 `result: accepted` 时，才可将需求置为 `accepted`。JSON 无效或门禁失败时保留验收者已写入的本次报告，主 agent 不得转录、覆盖或回滚；实现偏差按上述归因与自动返修路径处理，修复需要扩大已授权目标、任务 files 或验收标准时，必须作为产品决策询问用户；AI 决策台账记录失败时显示原因且不派修；第三轮仍未通过时记录技术阻塞，停止新派工与验收，需求不得置为 `accepted`。直接 JSON 结果不写入需求目录。
 
 - `accepted` → `status: accepted`，commit，向用户汇报并交由用户决定是否推送。规则文件在 draft 阶段已经是现行规范，没有合入步骤。
-- `rejected` → `status: rejected`，加载 spec-revise skill，对每个 FAIL 的验收项归因并原地回退。
+- 仅在用户确认产品决策后才可将需求置为 `rejected` 并加载 spec-revise skill；纯技术 FAIL 按自动返修轮次处理。
 
 ## 断点续接（/spec-resume）
 
@@ -357,7 +357,7 @@ return { verdict: "PASS" }
 | `done` 且 `step: review` | 跳过 |
 | `done` 且 `step != review` | 迁移为 `doing/review`，保留 commit，补派 review-engineer |
 | `todo` | 进入调度 |
-| `failed` | 报告用户，等待裁决；停止新派工和验收，不自动重试或返修 |
+| `failed` | 报告具体原因并停止新派工和验收；第三轮技术阻塞不升级纯技术问题 |
 | `doing` 且 `step: review` | agent 指向仍运行的 workflow 时等待通知；可用相同 run id 以 `resumeFromRunId` 恢复；无法恢复则重派只读审查，不重跑已可证明的 Red/Green |
 | `doing` | 已有 workflow run id 且可恢复则继续；run id、结果或结构化对象无法恢复，或无法证明前序 PASS，则从第一个无法恢复的门禁阶段重新执行，必要时重跑完整三阶段；不得从历史自然语言报告推断 PASS |
 
