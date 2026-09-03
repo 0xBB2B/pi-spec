@@ -1,0 +1,1 @@
+{"id":"USER-001","recordedAt":"2026-09-03T05:27:33.237Z","actor":"user","source":"spec-flow/draft-confirm","requirement":"review-auto-repair","trigger":"断点续接复核发现需求已无未收口维度且规范 lint 通过，需要决定是否确认规范并进入规划","decision":"确认当前五项 review-gates 规范变更，授权需求进入 confirmed、提交需求包并继续规划","alternatives":["保持 draft 并继续修订规范"],"impact":"需求可从 draft 推进到 confirmed，提交当前规范与需求包，并派 planner 生成任务计划"}
