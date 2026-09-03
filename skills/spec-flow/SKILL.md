@@ -18,7 +18,7 @@ description: 需求全生命周期流程——澄清需求 → 黑盒需求文�
 | test-engineer | 结构化 Test 证据 | 每任务一个 SubagentWorkflow 的 `agent(..., { agentType, schema })` |
 | impl-engineer | 结构化 Impl 证据 | 同一 SubagentWorkflow 串行调用 |
 | review-engineer | 结构化 Review 证据 | 同一 SubagentWorkflow 串行调用 |
-| acceptance-reviewer | acceptance.md 与结构化验收结果 | 专用验收流程 |
+| acceptance-reviewer | acceptance.md 与严格 JSON 验收结果 | 主 agent 直接调用 Agent |
 | pre-reviewer | 结构化提交前审查结果 | 专用提交前审查流程 |
 
 test-engineer、impl-engineer、review-engineer 仅三个 TDD 角色使用带 Schema 的 `SubagentWorkflow` 结构化对象作为门禁；planner 继续直接 Agent 调用，是不纳入 StructuredOutput 门禁的规划例外。StructuredOutput 的 verdict 只能是 PASS 或 FAIL。TDD 门禁不得以直接 Agent、文本 JSON、Markdown、首行或正则解析放行。
@@ -68,7 +68,7 @@ draft ─用户确认需求─▶ confirmed ─planner 完成─▶ planned ─�
 
 派工提示只需给出任务文件路径，不再摘录拼贴：test-engineer 读该文件的业务规则与验证方式块，并额外收到“只改测试”；impl-engineer 读涉及文件、成品定义、新增第三方依赖、函数清单、协作关系块，并额外收到 Test 结构化证据与失败测试；review-engineer 读整份任务文件，并额外收到实际 diff、Test/Impl 结构化证据和 verify 命令及证据。
 
-所有 Schema 缺失、workflow 返回 null/空结果、非法输出或校验失败、phase/专用字段矛盾或不一致均记录为 FAIL。上述 FAIL、没有明确 PASS、代理失败、证据不足等非 PASS 结果均写为 `status: failed` 与 `note: <简短原因>`，停止派发新任务和 acceptance；不自动重试或返修。Review 失败后不得派发后续阶段，停止派发并阻断 accepting/黑盒验收。不得使用 JSON.parse、正则、首行、文本 JSON、Markdown 或 summary/evidence 中的 PASS/PASS 子串推断裁决。
+所有 TDD Schema 缺失、workflow 返回 null/空结果、非法输出或校验失败、phase/专用字段矛盾或不一致均记录为 FAIL。上述 FAIL、没有明确 PASS、代理失败、证据不足等非 PASS 结果均写为 `status: failed` 与 `note: <简短原因>`，停止派发新任务和 acceptance；不自动重试或返修。Review 失败后不得派发后续阶段，停止派发并阻断 accepting/黑盒验收。TDD 门禁不得使用 JSON.parse、正则、首行、文本 JSON、Markdown 或 summary/evidence 中的 PASS/PASS 子串推断裁决。
 
 ### TDD 内联 Schema 与语义谓词
 
@@ -263,87 +263,36 @@ return { verdict: "PASS", testResult, implResult, reviewResult }
 
 ## 阶段五：accepting
 
-进入 `accepting` 前置扫描必须识别尚未 `accepted` 需求中 `status: done` 且 `step != review` 的旧任务。若扫描发现旧任务，先将需求从 `accepting` 退回 `executing`，把任务迁移为 `status: doing`、`step: review`，清空 `agent`，保留 `commit`，然后通过带 Schema 的 acceptance/review workflow 补派 review-engineer；非 PASS 不进入 acceptance。
+进入 `accepting` 前置扫描必须识别尚未 `accepted` 需求中 `status: done` 且 `step != review` 的旧任务。若扫描发现旧任务，先将需求从 `accepting` 退回 `executing`，把任务迁移为 `status: doing`、`step: review`，清空 `agent`，保留 `commit`，然后补派 review-engineer；非 PASS 不进入 acceptance。
 
-只有所有任务均为 `status: done` 且 `step: review` 才允许 `status: accepting`。acceptance workflow 是一个单 Agent `SubagentWorkflow`，只调用一次 `acceptance-reviewer`，并显式传入内联的 `ACCEPTANCE_SCHEMA`；不给 acceptance-reviewer 源码路径。acceptance-reviewer 继续写入调用方已有的 `acceptance.md`，结构化对象仅在该 workflow 的局部变量和内存中传递，不能写入报告或需求文件。
+只有所有任务均为 `status: done` 且 `step: review` 才允许 `status: accepting`。此时主 agent 只能通过 Agent 工具直接调用 `acceptance-reviewer`；验收调用及其最终结果不得要求、启动、承载或传递于任何 workflow，发现任何此类前提必须失败关闭；不得注入运行时结构化输出 Schema。调用参数必须包含验收文件路径、调用方指定的唯一 `args.acceptancePath` 报告路径和运行环境启动方式。acceptance-reviewer 先写入该指定报告，再返回唯一严格 JSON；主 agent 只读取报告用于门禁，验收者是该报告的唯一写入者。
 
-### Acceptance Schema 与业务谓词
+### 直接 JSON 门禁与业务谓词
 
-下面的 Schema 是 workflow 内联的普通 JavaScript 对象，不写入仓库。StructuredOutput 运行时负责校验严格对象；Schema 合法仍须通过 `isAcceptancePass`，不得以报告正文替代对象裁决。
+直接调用只接受完整最终回复解析出的唯一、非空且非数组的 JSON 对象。顶层字段必须精确为以下九项，`items` 条目字段也必须精确；约定外字段、未声明字段或缺少必需字段均拒绝（FAIL）：
 
-```javascript
-const acceptanceItem = {
-  type: "object",
-  additionalProperties: false,
-  required: ["id", "result", "observed", "difference"],
-  properties: {
-    id: text,
-    result: { enum: ["PASS", "FAIL"] },
-    observed: text,
-    difference: text,
-  },
-}
-const ACCEPTANCE_SCHEMA = {
-  type: "object",
-  additionalProperties: false,
-  required: [
-    "phase", "verdict", "summary", "issues", "evidence",
-    "acceptanceResult", "reportPath", "items", "uncovered",
-  ],
-  properties: {
-    ...common,
-    verdict: { enum: ["PASS", "FAIL"] },
-    phase: { const: "acceptance" },
-    acceptanceResult: { enum: ["accepted", "rejected"] },
-    reportPath: text,
-    items: { type: "array", items: acceptanceItem },
-    uncovered: strings,
-  },
-  oneOf: [
+```json
+{
+  "phase": "acceptance",
+  "verdict": "PASS",
+  "summary": "非空字符串",
+  "issues": ["非空字符串"],
+  "evidence": ["非空字符串"],
+  "acceptanceResult": "accepted",
+  "reportPath": "调用方指定的非空报告路径",
+  "items": [
     {
-      properties: {
-        verdict: { const: "PASS" },
-        issues: { type: "array", maxItems: 0, items: text },
-        acceptanceResult: { const: "accepted" },
-        items: {
-          type: "array",
-          minItems: 1,
-          items: {
-            ...acceptanceItem,
-            properties: {
-              ...acceptanceItem.properties,
-              result: { const: "PASS" },
-            },
-          },
-        },
-        uncovered: { type: "array", maxItems: 0, items: text },
-      },
-    },
-    {
-      properties: {
-        verdict: { const: "FAIL" },
-        acceptanceResult: { const: "rejected" },
-      },
-      anyOf: [
-        { properties: { issues: { type: "array", minItems: 1, items: text } } },
-        { properties: { uncovered: { type: "array", minItems: 1, items: text } } },
-        {
-          properties: {
-            items: {
-              type: "array",
-              contains: {
-                type: "object",
-                required: ["result"],
-                properties: { result: { const: "FAIL" } },
-              },
-            },
-          },
-        },
-      ],
-    },
+      "id": "非空字符串",
+      "result": "PASS",
+      "observed": "非空字符串",
+      "difference": "非空字符串"
+    }
   ],
+  "uncovered": ["非空字符串"]
 }
 ```
+
+调用方对完整最终回复只整体执行一次 `JSON.parse`，解析失败、回复含前后文字或围栏、空值、数组均按 FAIL 失败关闭；不得截取 JSON、使用正则提取或从自然语言推断通过。解析后还要校验对象类型、精确字段集合、字段类型、非空值和枚举。FAIL/rejected 必须由非空 `issues`、`uncovered` 或至少一个 `items.result` 为 FAIL 支撑，并显示具体原因或具体差异；不能以缺少诊断的 FAIL 放行。
 
 验收 PASS 的唯一业务谓词为：
 
@@ -363,34 +312,29 @@ function isAcceptancePass(args, result, report) {
 }
 ```
 
-调用方必须从 `args.acceptancePath` 读取已经写出的 `acceptance.md` 的 frontmatter，并把读取结果传给该谓词；报告不可读、路径不一致、frontmatter 不是 `accepted` 或对象字段与报告结论不一致均拒绝。Schema 缺失 → `FAIL`；`null` 或空结果 → `FAIL`；非法对象或校验失败 → `FAIL`；语义矛盾或对象与 `acceptance.md` 不一致 → `FAIL`。Markdown、文本 JSON、自然语言结果不得参与门禁；`JSON.parse` 或正则提取均禁止，任一此类输出均按 `FAIL` 处理。
+调用方必须从 `args.acceptancePath` 读取验收者已经写出的 `acceptance.md` frontmatter，并将读取结果传给该谓词。路径不一致、报告不可读、frontmatter 的 `result` 为 `rejected` 或对象字段与报告结论不一致均 FAIL，不得把需求置为 `accepted`。主 agent 只读取指定报告，绝不转录报告内容；不得转录、覆盖或回滚验收者写入的报告。
 
-该 acceptance workflow 的调用顺序如下；结构化结果 `acceptanceResult` 只保留在当前 workflow 内存中：
+直接调用的最小顺序如下：
 
 ```javascript
-export const meta = {
-  name: "acceptance-structured-gate",
-  description: "Run the single acceptance reviewer gate",
-  phases: [{ title: "Acceptance", detail: "acceptance-reviewer structured gate" }],
-}
-
-phase("Acceptance")
-if (!ACCEPTANCE_SCHEMA) {
-  return { verdict: "FAIL", failedPhase: "acceptance", reason: "StructuredOutput Schema 缺失" }
-}
-const acceptanceResult = await agent(args.acceptancePrompt, {
+const finalReply = await Agent(args.acceptancePrompt, {
   label: "acceptance-reviewer",
   agentType: "acceptance-reviewer",
-  schema: ACCEPTANCE_SCHEMA,
 })
-const acceptanceReport = await readAcceptanceReport(args.acceptancePath)
-if (!isAcceptancePass(args, acceptanceResult, acceptanceReport)) {
-  return { verdict: "FAIL", failedPhase: "acceptance", reason: "StructuredOutput acceptance gate failed" }
+let result
+try {
+  result = JSON.parse(finalReply)
+} catch (error) {
+  return { verdict: "FAIL", reason: "直接 JSON 解析失败：具体原因" }
 }
-return { verdict: "PASS", acceptanceResult }
+const report = await readAcceptanceReport(args.acceptancePath)
+if (!isAcceptancePass(args, result, report)) {
+  return { verdict: "FAIL", reason: "验收 JSON、指定报告或具体差异不一致" }
+}
+return { verdict: "PASS" }
 ```
 
-只有对象同时满足 `verdict: PASS`、`acceptanceResult: accepted`、`items` 非空且全部为 `PASS`、`issues` 与 `uncovered` 为空、`reportPath` 精确等于调用方路径，并且 `acceptance.md` frontmatter 为 `result: accepted` 时，才可将需求置为 `accepted`。任何失败关闭结果统一写为 `status: failed` 与 `note: <原因>`，停止新任务派发和 accepting，不自动重试或返修；失败对象不得持久化，非 PASS 不进入 acceptance。
+只有对象同时满足 `verdict: PASS`、`acceptanceResult: accepted`、`items` 非空且全部为 `PASS`、`issues` 与 `uncovered` 为空、`reportPath` 精确等于调用方路径，并且指定 `acceptance.md` frontmatter 为 `result: accepted` 时，才可将需求置为 `accepted`。JSON 无效或门禁失败时保留验收者已写入的本次报告，主 agent 不得转录、覆盖或回滚；具体原因写入 `status: failed` 与 `note: <原因>`，需求不得置为 `accepted`，停止后续动作，不自动重试或返修。直接 JSON 结果不写入需求目录。
 
 - `accepted` → 先合入现行规范：把本次每条 R 改写进 `.pi-spec/spec/<域>.md`（新增或替换），删除因此失效的规则，用本次 AC 替换过时例子，对该文件跑 lint；然后 `status: accepted`，规范与代码一起 commit，向用户汇报并交由用户决定是否推送。未合入规范不得置 `accepted`。
 - `rejected` → `status: rejected`，加载 spec-revise skill，对每个 FAIL 的 AC 归因并原地回退。

@@ -1,6 +1,6 @@
 ---
 name: git-push
-description: 完整 PR/MR 提交流程在本地 commit 后使用 pre-reviewer 审查，只有 StructuredOutput 明确的 verdict PASS 且快照一致才可放行 push 或创建 PR/MR；用户要求提交 PR、Pull Request、Merge Request 或调用 `/skill:git-push` 时使用。
+description: 完整 PR/MR 提交流程在本地 commit 后直接调用 pre-reviewer 审查，只有严格 JSON 的 verdict PASS 且快照一致才可放行 push 或创建 PR/MR；用户要求提交 PR、Pull Request、Merge Request 或调用 `/skill:git-push` 时使用。
 ---
 
 # 提交 PR/MR
@@ -11,7 +11,7 @@ description: 完整 PR/MR 提交流程在本地 commit 后使用 pre-reviewer �
 
 - commit 标题和 PR 标题分别根据各自用途生成；
 - PR 正文聚焦可审阅信息，并以真实的测试、release note、issue 关联和 reviewer 安排为依据；
-- 任何 push 或 PR/MR 创建前必须先完成第 7 节的 pre-reviewer 审查；只有 StructuredOutput 明确的 `verdict: PASS` 且审查快照一致时才可继续，不可用、失败或未通过时一律停止。
+- 任何 push 或 PR/MR 创建前必须先完成第 7 节的 pre-reviewer 审查；只有严格 JSON 明确的 `verdict: PASS` 且审查快照一致时才可继续，不可用、失败或未通过时一律停止。
 
 ## 适用边界
 
@@ -404,123 +404,98 @@ REVIEW_FINGERPRINT="$(
 printf 'review head: %s\nreview fingerprint: %s\n' "$REVIEW_HEAD" "$REVIEW_FINGERPRINT" || exit 1
 ```
 
-上述同一套快照命令必须 fail closed：任一采集命令失败都停止；不保留候选快照，不启动 pre-reviewer，也不进行任何远端写入。把成功输出的两个值记录在当前流程上下文中；不要写入仓库文件或持久化凭证。PASS 后、push 前和 PR/MR 创建前的调用方复核必须使用同一套 fail-closed 快照过程；复核命令失败时同样停止，不得沿用旧快照或旧 PASS。
+上述同一套快照命令必须 fail closed：任一采集命令失败都停止；不保留候选快照，不调用 pre-reviewer，也不进行任何远端写入。把成功输出的两个值记录在当前流程上下文中；不要写入仓库文件或持久化凭证。审查后、push 前和 PR/MR 创建前的调用方复核必须使用同一套 fail-closed 快照过程；复核命令失败时同样停止，不得沿用旧快照或旧 PASS。
 
-在记录快照后，使用单 Agent `SubagentWorkflow` 同步执行 pre-reviewer 结构化门禁；远端写入保持为 0，直到 workflow 返回并通过调用方谓词。以下为 workflow 内联脚本及完整的 `PRE_REVIEW_SCHEMA`：
+记录快照后，主 agent 直接调用一次 `Agent` 执行 `pre-reviewer`，等待其完整最终回复；不得为该审查启动任何 workflow。调用方将仓库根路径、基线、需求与验收标准，以及只读的 `REVIEW_HEAD` 和 `REVIEW_FINGERPRINT` 原样传入。远端写入保持为 0，直到直接回复通过全部门禁。
+
+调用方必须对完整最终回复整体只执行一次 JSON 解析，不截取首行或非空行，不剥离围栏，不从自然语言推断结果。等价的调用方校验顺序如下：
 
 ```javascript
-const text = { type: "string", minLength: 1 }
-const strings = { type: "array", items: text }
-const evidence = { type: "array", minItems: 1, items: text }
-const common = {
-  verdict: { enum: ["PASS", "FAIL"] },
-  summary: text,
-  issues: strings,
-  evidence,
+const TOP_LEVEL_FIELDS = [
+  "phase", "verdict", "summary", "issues", "evidence",
+  "reviewedHead", "contentFingerprint", "blockingFindings",
+]
+const FINDING_FIELDS = ["severity", "location", "problem"]
+const nonEmptyText = value => typeof value === "string" && value.trim().length > 0
+const exactFields = (value, fields) => {
+  const keys = Object.keys(value)
+  return keys.length === fields.length && fields.every(field => keys.includes(field))
+}
+const textArray = value => Array.isArray(value) && value.every(nonEmptyText)
+const finding = value => value
+  && typeof value === "object"
+  && !Array.isArray(value)
+  && exactFields(value, FINDING_FIELDS)
+  && ["Blocker", "Important"].includes(value.severity)
+  && nonEmptyText(value.location)
+  && nonEmptyText(value.problem)
+const failClosed = reason => ({ verdict: "FAIL", reason: `pre-reviewer ${reason}` })
+
+let reviewReply
+try {
+  reviewReply = await Agent(
+    `仓库根路径：${repoRoot}；基线：${targetBranch}；需求与验收标准：${requirements}；审查重点：远端写入前完整审查；REVIEW_HEAD=${REVIEW_HEAD}；REVIEW_FINGERPRINT=${REVIEW_FINGERPRINT}`,
+    { label: "pre-reviewer", agentType: "pre-reviewer" },
+  )
+} catch (error) {
+  const reason = error instanceof Error ? error.message : String(error)
+  return failClosed(`调用失败：${reason}`)
+}
+if (typeof reviewReply !== "string" || reviewReply.trim().length === 0) {
+  return failClosed("回复为空或不是文本")
 }
 
-const findingItems = {
-  type: "array",
-  items: {
-    type: "object",
-    additionalProperties: false,
-    required: ["severity", "location", "problem"],
-    properties: {
-      severity: { enum: ["Blocker", "Important"] },
-      location: text,
-      problem: text,
-    },
-  },
+let result
+try {
+  result = JSON.parse(reviewReply)
+} catch (error) {
+  const reason = error instanceof Error ? error.message : String(error)
+  return failClosed(`完整最终回复整体 JSON 解析失败：${reason}`)
 }
-const PRE_REVIEW_SCHEMA = {
-  type: "object",
-  additionalProperties: false,
-  required: [
-    "phase", "verdict", "summary", "issues", "evidence",
-    "reviewedHead", "contentFingerprint", "blockingFindings",
-  ],
-  properties: {
-    ...common,
-    verdict: { enum: ["PASS", "FAIL"] },
-    phase: { const: "pre-review" },
-    reviewedHead: text,
-    contentFingerprint: text,
-    blockingFindings: findingItems,
-  },
-  oneOf: [
-    {
-      properties: {
-        verdict: { const: "PASS" },
-        issues: { type: "array", maxItems: 0, items: text },
-        blockingFindings: { type: "array", maxItems: 0, items: findingItems.items },
-      },
-    },
-    {
-      properties: {
-        verdict: { const: "FAIL" },
-        issues: { type: "array", minItems: 1, items: text },
-        blockingFindings: { type: "array", minItems: 1, items: findingItems.items },
-      },
-    },
-  ],
+if (!result || typeof result !== "object" || Array.isArray(result)) {
+  return failClosed("结果必须是唯一、非空且非数组的 JSON 对象")
 }
-
-function isPreReviewPass(result, args) {
-  if (!result || typeof result !== "object") return false
-  if (!args || typeof args !== "object") return false
-  if (result.phase !== "pre-review") return false
-  if (!Array.isArray(result.issues)
-    || !Array.isArray(result.evidence)
-    || !Array.isArray(result.blockingFindings)) return false
-  if (typeof result.reviewedHead !== "string"
-    || typeof result.contentFingerprint !== "string") return false
-  if (result.evidence.length === 0) return false
-  return result.verdict === "PASS"
-    && result.issues.length === 0
-    && result.blockingFindings.length === 0
-    && result.reviewedHead === args.REVIEW_HEAD
-    && result.contentFingerprint === args.REVIEW_FINGERPRINT
+if (!exactFields(result, TOP_LEVEL_FIELDS)) {
+  return failClosed("顶层字段缺失、额外或约定外字段")
 }
-
-export const meta = {
-  name: "pre-review-structured-gate",
-  description: "Run one structured pre-reviewer gate",
-  phases: [{ title: "Pre-review", detail: "pre-reviewer StructuredOutput gate" }],
+if (result.phase !== "pre-review" || !["PASS", "FAIL"].includes(result.verdict)) {
+  return failClosed("phase 或 verdict 字段非法")
 }
-
-if (!PRE_REVIEW_SCHEMA) {
-  return { verdict: "FAIL", reason: "StructuredOutput Schema 缺失" }
+if (!nonEmptyText(result.summary)
+  || !textArray(result.issues)
+  || !textArray(result.evidence)
+  || result.evidence.length === 0
+  || !nonEmptyText(result.reviewedHead)
+  || !nonEmptyText(result.contentFingerprint)
+  || !Array.isArray(result.blockingFindings)
+  || !result.blockingFindings.every(finding)) {
+  return failClosed("必需字段类型、非空值或 blockingFindings 条目非法")
 }
-
-phase("Pre-review")
-const result = await agent(
-  `仓库根路径：${args.repoRoot}；基线：${args.targetBranch}；需求与验收标准：${args.requirements}；审查重点：远端写入前完整审查；只读上下文：REVIEW_HEAD=${args.REVIEW_HEAD}；只读上下文：REVIEW_FINGERPRINT=${args.REVIEW_FINGERPRINT}`,
-  {
-    label: "pre-reviewer",
-    agentType: "pre-reviewer",
-    schema: PRE_REVIEW_SCHEMA,
-  },
-)
-if (!result) {
-  return { verdict: "FAIL", reason: "StructuredOutput 缺失或 workflow 返回空结果" }
+if (result.reviewedHead !== REVIEW_HEAD
+  || result.contentFingerprint !== REVIEW_FINGERPRINT) {
+  return failClosed("审查快照不匹配或不一致")
 }
-if (!isPreReviewPass(result, args)) {
-  return { verdict: "FAIL", reason: "StructuredOutput 非法、字段矛盾或快照不匹配" }
+if (result.verdict === "PASS"
+  && (result.issues.length !== 0 || result.blockingFindings.length !== 0)) {
+  return failClosed("PASS 与 issues 或 blockingFindings 语义矛盾")
+}
+if (result.verdict === "FAIL"
+  && (result.issues.length === 0 || result.blockingFindings.length === 0)) {
+  return failClosed("FAIL 缺少 issues 或 blockingFindings")
+}
+if (result.verdict === "FAIL") {
+  return failClosed(`审查明确 FAIL：${result.issues.join("；")}`)
 }
 return { verdict: "PASS", preReviewResult: result }
 ```
 
-SubagentWorkflow 同步等待 `result` 返回；审查结果返回前不得执行 push 或创建 PR/MR。结构化对象 `result` 和 `preReviewResult` 只在 workflow 的局部变量与返回值内存中传递；不得写入报告、JSON、Markdown、requirements 或其他文件。
+解析、字段、类型、枚举、语义或快照校验任一失败，都返回明确的 FAIL 原因；保留本地 commit，立即停止，不得执行 push 或创建 PR/MR。直接回复及校验结果只在当前流程内存中传递，不写入报告、JSON、Markdown、requirements 或其他文件。
 
-本门禁禁止对审查文本使用 Markdown、文本 JSON、首行、第一个非空行、JSON.parse、正则或任何文本解析；这些路径均失败关闭。调用方只能依据 Schema 验证的结构化对象 verdict 决定是否放行。调用前若 `PRE_REVIEW_SCHEMA` 缺失，workflow 不调用 agent，直接返回 `verdict: "FAIL"`；`Schema 缺失`、null 或空结果、非法输出或校验失败、phase/verdict/专用字段矛盾或快照不一致均返回 FAIL。代理正常结束不等于 PASS，不能由主 Agent 自查替代结构化审查结果。
+只有上述完整校验通过且 verdict 为 PASS 时才可放行。PASS 后、push 前和 PR/MR 创建前，调用方必须立即使用上述同一套 fail-closed 快照过程重新计算当前 HEAD 和当前内容指纹，并分别与 REVIEW_HEAD、REVIEW_FINGERPRINT 精确比较；任一采集命令失败、值变化或不一致都使原 PASS 失效。不得把 pre-reviewer 自报的快照替代调用方复核；复核失败时保留本地 commit，停止远端写入，并对变化后的完整内容重新启动 pre-reviewer。
 
-唯一允许放行的结构化 verdict 是通过 `PRE_REVIEW_SCHEMA` 与 `isPreReviewPass` 谓词的 `PASS`，其他结果均不允许继续 push。有效结构化 verdict PASS 后立即重新计算当前 HEAD 和当前内容指纹，并将重新计算的当前 HEAD 与 REVIEW_HEAD、当前内容指纹与 REVIEW_FINGERPRINT 比较；任一命令失败、变化或不一致都使原 PASS 失效。只有结构化对象与调用方快照一致匹配时，才允许继续 push。
+初次 push 后、PR/MR 创建前，若 HEAD、工作区或指纹发生变化，旧 PASS 立即失效，禁止创建 PR/MR。若存在未提交的 tracked 或 untracked 变化，必须先回到既有范围检查/预检、项目验证、用户确认和本地 commit；不得直接 push 未提交内容。形成新的本地 commit/新的待推送 HEAD 后，重新记录完整快照，重新直接调用 pre-reviewer，取得严格 JSON verdict PASS，再由调用方复核；复核一致后回到第 8 节重新 push。每一次新 commit 都必须重复“新 HEAD → 完整快照 → 直接 pre-reviewer → 严格 JSON PASS → 复核”的顺序。
 
-调用方必须在审查后、push 前和 PR/MR 创建前分别使用上述同一套 fail-closed 快照过程复核；复核失败或任一值变化时，保留本地 commit，停止 push 和 PR/MR 创建，并对变化后的完整内容重新启动 pre-reviewer。不得沿用旧 PASS，不能把代理自报的 reviewedHead/contentFingerprint 当作调用方复核。
-
-初次 push 后、PR/MR 创建前，若 HEAD、工作区或指纹发生变化，旧 PASS 立即失效，禁止创建 PR/MR。若存在未提交的 tracked 或 untracked 变化，必须先回到既有范围检查/预检、项目验证、用户确认和本地 commit；不得直接 push 未提交内容。形成新的本地 commit/新的待推送 HEAD 后，重新记录完整快照，重新同步调用 pre-reviewer，取得结构化 verdict PASS，再由调用方复核；复核一致后回到第 8 节重新 push。每一次新 commit 都必须重复“新 HEAD → 完整快照 → pre-reviewer → 结构化 PASS → 复核”的顺序。
-
-Schema 缺失、null、非法、矛盾、不一致或明确 FAIL 均保留本地 commit，立即停止，不得执行 push 或创建 PR/MR。
+任何调用失败、空值、非法对象、矛盾、不一致或明确 FAIL 均保留本地 commit，立即停止，不得执行 push 或创建 PR/MR。
 ### 8. 推送分支
 
 commit 成功后再次检查：
@@ -623,7 +598,7 @@ glab mr create \
 - 是否使用了项目要求的正文、signoff、签名或 trailers；
 - 推送的分支与目标分支；
 - 实际运行的测试及结果；
-- 调用方记录的 REVIEW_HEAD、REVIEW_FINGERPRINT、审查范围与 pre-reviewer 返回的 StructuredOutput `verdict: PASS` 及其快照绑定；
+- 调用方记录的 REVIEW_HEAD、REVIEW_FINGERPRINT、审查范围与 pre-reviewer 返回的严格 JSON `verdict: PASS` 及其快照绑定；
 - PR/MR 标题和 URL；
 - 尚未解决的问题；
 - 本次流程产生的临时文件及清理结果。
