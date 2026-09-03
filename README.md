@@ -12,17 +12,20 @@ pi 的需求驱动开发流程包。把「澄清需求 → 规则文件增删改
 | `rules/` | 自动注入 system prompt 的流程规则：任务分流、执行授权、递进式澄清、决策记录 |
 | `extensions/rules.ts` | 每轮对话前把 `rules/*.md` 按文件名顺序追加到 system prompt |
 | `extensions/agents-bridge.ts` | 会话启动时把 `agents/*.md` 符号链接到 `~/.pi/agent/agents/` |
+| `extensions/subagents-preflight.ts` | 会话启动时探测 pi-subagents 是否已加载，缺失时提示安装命令 |
 | `extensions/decision-record.ts` | 注册 `decision_record` 工具：经材料性检查把一条 AI 或用户决定追加到需求目录的决策台账并返回回执 |
 | `tests/` | `bun test tests` |
 
 ## 安装
 
+本包依赖 `@tintinweb/pi-subagents`（0.19.0 及以上）：`Agent`、`SubagentWorkflow`、`StructuredOutput` 三个工具以及 `agents/` 下角色定义的加载都由它提供。两条命令按顺序执行：
+
 ```bash
-pi install /absolute/path/to/pi-spec        # 本地开发，改动即时生效
-pi install git:github.com/0xBB2B/pi-spec    # 远程安装
+pi install npm:@tintinweb/pi-subagents
+pi install git:github.com/0xBB2B/pi-spec      # 本地开发改用 pi install /absolute/path/to/pi-spec
 ```
 
-依赖 `@tintinweb/pi-subagents`：`Agent`、`SubagentWorkflow`、`StructuredOutput` 三个工具由它提供。
+`extensions/subagents-preflight.ts` 会在每次会话启动时探测 pi-subagents 是否已加载，缺失时给出上述安装命令的提示。本包不捆绑 pi-subagents：捆绑副本与用户自装的那份会被 pi 当作两个扩展各加载一次，导致同名工具重复注册。
 
 ## 子代理为什么要桥接
 
