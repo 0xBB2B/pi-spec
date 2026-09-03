@@ -21,7 +21,7 @@ function pingOnce(events: EventBus, timeoutMs: number): Promise<boolean> {
 	});
 }
 
-export async function detectSubagents(events: EventBus, delaysMs: number[] = [0, 500, 1500, 3000]): Promise<boolean> {
+export async function detectSubagents(events: EventBus, delaysMs: number[] = [0, 500, 1500]): Promise<boolean> {
 	for (const delay of delaysMs) {
 		if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
 		if (await pingOnce(events, 300)) return true;

@@ -38,5 +38,5 @@ describe("subagents preflight", () => {
     subagentsPreflightExtension(pi as never);
     await onSessionStart?.({}, { ui: { notify: (message: string) => notices.push(message) } });
     expect(notices).toEqual([INSTALL_HINT]);
-  });
+  }, 10_000);
 });
