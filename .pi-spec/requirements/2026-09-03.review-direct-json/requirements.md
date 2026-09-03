@@ -1,7 +1,7 @@
 ---
 name: review-direct-json
 title: 审查者直接返回严格 JSON
-status: planned
+status: accepted
 created: 2026-09-03
 ---
 

@@ -6,10 +6,10 @@ files: [/Users/bb/Projects/pi-spec/skills/spec-flow/SKILL.md, /Users/bb/Projects
 refs: [R-2, R-3, R-4, R-5, AC-1, AC-3, AC-4]
 parallel: true
 verify: bun test tests/acceptance-direct-json.test.ts
-status: todo
-step: test
-agent: ""
-commit: ""
+status: done
+step: review
+agent: wf_8f27c093ed2f
+commit: 1aa96c0
 note: ""
 ---
 
