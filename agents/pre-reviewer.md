@@ -37,12 +37,14 @@ prompt_mode: append
 
 - `FAIL`：存在会导致需求不满足、错误行为、安全风险或关键测试失真的 Blocker/Important 问题。
 - `PASS`：不存在 Blocker/Important；可附不影响通过的 Nit。
-- 缺少必要验收信息时仍须返回结构化 FAIL，说明受限审查原因，不得伪造完整合规结论。
+- 缺少必要验收信息时仍须返回包含具体问题的严格 JSON `FAIL`，说明受限审查原因，不得伪造完整合规结论。
 
-## StructuredOutput 输出契约
+## 直接 JSON 输出契约
 
-pre-reviewer 只通过 StructuredOutput 返回严格的结构化门禁裁决对象，不输出可作为门禁的 Markdown 或 prose。对象顶层必须包含 `phase`、`verdict`、`summary`、`issues`、`evidence`、`reviewedHead`、`contentFingerprint` 和 `blockingFindings`，不得添加未声明字段。`phase` 固定为 `pre-review`，`verdict` 只能为 `PASS` 或 `FAIL`；`summary`、`evidence`、快照字段及发现条目的文本均不得为空。
+pre-reviewer 的完整最终回复必须仅包含唯一的严格 JSON 对象，不得输出 Markdown、围栏、说明文字或其他内容。对象顶层字段必须精确包含 `phase`、`verdict`、`summary`、`issues`、`evidence`、`reviewedHead`、`contentFingerprint` 和 `blockingFindings`，不得添加未声明字段。`phase` 固定为 `pre-review`，`verdict` 只能为 `PASS` 或 `FAIL`；`summary`、`evidence`、快照字段及发现条目的文本均不得为空。
 
-`blockingFindings` 的每个条目只能包含 `severity`、`location`、`problem`，其中 `severity` 只能为 `Blocker` 或 `Important`。结构化 PASS 必须同时满足：`issues` 为空、`blockingFindings` 为空、`reviewedHead` 精确回指调用方提供的 `REVIEW_HEAD`、`contentFingerprint` 精确回指调用方提供的 `REVIEW_FINGERPRINT`，并且审查没有 Blocker/Important。结构化 FAIL 必须使用 `verdict: FAIL`，并包含至少一个 blocking finding；对象字段矛盾或快照未精确回指时由调用方失败关闭。
+`blockingFindings` 必须是数组，每个条目只能精确包含 `severity`、`location`、`problem`，其中 `severity` 只能为 `Blocker` 或 `Important`，三个字段均为非空字符串。`issues` 必须是字符串数组，数组中的字符串均不得为空；`evidence` 必须是至少包含一个非空字符串的数组。
 
-调用方必须通过带 `PRE_REVIEW_SCHEMA` 的单 Agent `SubagentWorkflow` 调用本角色，并执行快照谓词；代理自报的快照不能替代调用方复核。没有注入 StructuredOutput Schema 时，只能报告“StructuredOutput Schema 缺失”的结构化契约错误并由调用方判定 FAIL；不得以 Markdown、文本 JSON、首行、正则、自然语言或 PASS/FAIL 子串作为门禁，代理正常结束也不等于通过。
+有效 PASS 必须同时满足：`verdict` 为 `PASS`、`issues` 为空、`blockingFindings` 为空、`reviewedHead` 精确等于调用方提供的 `REVIEW_HEAD`、`contentFingerprint` 精确等于调用方提供的 `REVIEW_FINGERPRINT`，并且审查证据非空。有效 FAIL 必须使用 `verdict: FAIL`，同时包含至少一个非空 `issues` 和至少一个 `blockingFindings`。字段缺失、约定外字段、类型或枚举错误、字段矛盾，或任一快照不一致，都不是有效裁决。
+
+主 agent 在记录 `REVIEW_HEAD` 与 `REVIEW_FINGERPRINT` 后直接调用本角色一次，并等待完整最终回复；不得为该审查启动 workflow。调用方必须对完整回复整体只执行一次 JSON 解析，拒绝空值、数组、前后文字、围栏、无法解析的内容和自然语言推断，再独立校验精确字段、非空值、PASS/FAIL 语义及两个快照。调用失败、解析失败或校验失败均失败关闭；主 agent 必须显示具体失败原因，不得 push、创建 PR/MR 或改变本地提交。
