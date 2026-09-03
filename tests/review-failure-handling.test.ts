@@ -47,4 +47,12 @@ describe("审查失败统一归因规则", () => {
       expect(rule, `the injected rule must not allow: ${statement}`).not.toContain(statement);
     }
   });
+
+  test("review-gates/independent-issue-task/AC-1：独立问题新增后续任务", async () => {
+    const rule = await readFailureHandlingRule();
+
+    expect(rule).toContain(
+      "与当前任务根因和预期结果可独立验证的问题必须新增具有独立验证结论的后续任务，不得并入当前返修。",
+    );
+  });
 });
