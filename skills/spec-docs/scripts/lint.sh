@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-f="${1:?用法: lint.sh <requirements.md>}"
-[[ -f "$f" ]] || { echo "FAIL: requirements.md 不存在"; exit 1; }
+usage="用法: lint.sh <requirements.md> | lint.sh --spec <规则文件>..."
+[[ $# -ge 1 ]] || { echo "FAIL: $usage"; exit 1; }
 
 fail() {
   echo "FAIL: $1"
@@ -77,6 +77,18 @@ END { check() }
   [[ -z "$ac_shape" ]] || fail "$file 的验收缺少固定的触发 / Given / When / Then: $ac_shape"
 }
 
+if [[ "$1" == "--spec" ]]; then
+  shift
+  [[ $# -ge 1 ]] || fail "$usage"
+  for spec in "$@"; do
+    lint_spec_file "$spec" "$(basename "$spec" .md)"
+  done
+  echo "PASS"
+  exit 0
+fi
+
+f="$1"
+[[ -f "$f" ]] || fail "requirements.md 不存在"
 sections=$(grep -oE '^## [0-9]+\.' "$f" || true)
 [[ "$sections" == $'## 1.\n## 2.\n## 3.\n## 4.' ]] || fail "requirements.md 必须恰好包含第 1 至第 4 节"
 

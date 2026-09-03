@@ -1,13 +1,13 @@
 ---
 name: spec-flow
-description: 需求全生命周期流程——澄清需求 → 黑盒需求文档经用户确认 → planner 产出一任务一文件的任务集 → 按依赖并发派工 test-engineer/impl-engineer/review-engineer → acceptance-reviewer 黑盒验收；status、结构化 TDD 门禁与安全续接规则。用户提出全新功能或需求（无对应需求文档）时加载；/spec-new 与 /spec-resume 为强制入口；只由主 agent 加载。
+description: 需求全生命周期流程——澄清需求 → 规则文件的增删改经用户确认 → planner 产出一任务一文件的任务集 → 按依赖并发派工 test-engineer/impl-engineer/review-engineer → acceptance-reviewer 黑盒验收；status、结构化 TDD 门禁与安全续接规则。用户提出全新功能或需求（无对应需求文档）时加载；/spec-new 与 /spec-resume 为强制入口；只由主 agent 加载。
 ---
 
 # spec-flow：需求生命周期
 
 文件格式一律遵循 spec-docs skill，本 skill 只定流程。所有确认动作使用 `ask_user_question` 工具。
 
-检索规则：系统现行行为一律以 `.pi-spec/spec/` 为准；`.pi-spec/requirements/` 下只读当前进行中的那个目录，其余目录禁止读取。
+检索规则：系统现行行为一律以 `.pi-spec/spec/` 下的规则文件为准，先读 `spec/INDEX.md` 再按需打开规则文件；`.pi-spec/requirements/` 下只读当前进行中的那个目录，其余目录禁止读取。
 
 ## 角色
 
@@ -33,14 +33,14 @@ draft ─用户确认需求─▶ confirmed ─planner 完成─▶ planned ─�
 
 ## 阶段一：draft
 
-1. 新需求：读取 `.pi-spec/spec/` 中相关功能域文件作为现状（不存在即现状为空）；按 `<YYYY-MM-DD>.<slug>` 建目录，复制模板落盘，`status: draft`，建立 `tasks/INDEX.md` 与 `acceptance.md` 占位后运行 spec-docs 的 `init`；确保 `.pi-spec/.cache/.gitignore` 存在。
-2. 按递进式澄清逐维度提问。用户在给出的具体选项中作出选择时，先调用 `decision_record`（actor user，impact 写该选择对需求的约束）再写盘；AI 按项目惯例自行决定内部取向时调用 `decision_record`（actor ai）。未回答、忽略或取消的问题不记录。**每收口一个维度立即写盘**：更新对应章节。
-3. 没有未收口的维度、每条 R 有 AC 覆盖、lint PASS 后，请求用户确认：只给出文件路径和本轮变更摘要（改动了哪些章节、R、AC 各一句话），不在对话中回显文档正文，用户自行打开文件核对。
-4. 用户确认 → 调用 `decision_record`（actor user，source `spec-flow/draft-confirm`，impact 为需求进入 confirmed 并允许规划）；记录成功后 `status: confirmed`，建分支（分支名 = slug，按项目 git 惯例），commit。记录失败则停止，状态保持 draft。
+1. 新需求：先建分支（分支名 = slug，按项目 git 惯例）。读 `spec/INDEX.md` 与 `spec/GLOSSARY.md`，打开相关规则文件作为现状（不存在即现状为空），识别三类点并用 `ask_user_question` 逐项收集裁决：与新需求互斥的冲突、必须遵守的跨规则硬约束、边界模糊需用户决定新增 / 修订 / 合并的重叠项。按 `<YYYY-MM-DD>.<slug>` 建目录，复制模板落盘，`status: draft`，建立 `tasks/INDEX.md` 与 `acceptance.md` 占位后运行 spec-docs 的 `init`；确保 `.pi-spec/.cache/.gitignore` 存在。
+2. 按递进式澄清逐维度提问。用户在给出的具体选项中作出选择时，先调用 `decision_record`（actor user，impact 写该选择对需求的约束）再写盘；AI 按项目惯例自行决定内部取向时调用 `decision_record`（actor ai）。未回答、忽略或取消的问题不记录。**每收口一个维度立即写盘**：直接新增、修改或删除对应规则文件（一规则一文件，放域子目录，发现多个独立逻辑就拆成多个文件），同步 `spec/INDEX.md`、`spec/GLOSSARY.md` 与 requirements.md 第 3 节规范变更表。
+3. 没有未收口的维度、每条约束可证伪且有验收覆盖、lint PASS 后，请求用户确认：只给出规范变更表和本轮变更摘要（每个规则文件一句话），不在对话中回显文件正文，用户自行打开文件核对。
+4. 用户确认 → 调用 `decision_record`（actor user，source `spec-flow/draft-confirm`，impact 为需求进入 confirmed 并允许规划）；记录成功后 `status: confirmed`，把规则文件、INDEX、GLOSSARY 与需求目录一起 commit。记录失败则停止，状态保持 draft。
 
 ## 阶段二：confirmed → planned
 
-派 planner，任务提示只含：requirements.md 路径、仓库根路径。planner 报告需求超限并给出拆分建议时，不进入 planned：把需求退回 `draft`，按拆分建议与用户确认后拆成多个需求目录，各自重新确认。planner 返回后核对 `tasks/` 满足 spec-docs 约束（每任务生产文件 ≤ 2 且 AC ≤ 3、正文 ≤ 200 行且业务规则与验证方式非空、无两个任务共享生产文件、files 不相交才 parallel、AC 全覆盖、depends_on 只向前、INDEX.md 列全），不满足则带具体违规项重派。通过 → `status: planned`，commit。
+派 planner，任务提示只含：requirements.md 路径、仓库根路径。planner 报告需求超限并给出拆分建议时，不进入 planned：把需求退回 `draft`，按拆分建议与用户确认后拆成多个需求目录，各自重新确认。planner 返回后核对 `tasks/` 满足 spec-docs 约束（每任务生产文件 ≤ 2 且 refs ≤ 3、正文 ≤ 200 行且业务规则与验证方式非空、无两个任务共享生产文件、files 不相交才 parallel、本次新增或修改规则文件的验收全覆盖、depends_on 只向前、INDEX.md 列全），不满足则带具体违规项重派。通过 → `status: planned`，commit。
 
 ## 阶段三：planned → executing
 
@@ -265,7 +265,7 @@ return { verdict: "PASS", testResult, implResult, reviewResult }
 
 进入 `accepting` 前置扫描必须识别尚未 `accepted` 需求中 `status: done` 且 `step != review` 的旧任务。若扫描发现旧任务，先将需求从 `accepting` 退回 `executing`，把任务迁移为 `status: doing`、`step: review`，清空 `agent`，保留 `commit`，然后补派 review-engineer；非 PASS 不进入 acceptance。
 
-只有所有任务均为 `status: done` 且 `step: review` 才允许 `status: accepting`。此时主 agent 只能通过 Agent 工具直接调用 `acceptance-reviewer`；验收调用及其最终结果不得要求、启动、承载或传递于任何 workflow，发现任何此类前提必须失败关闭；不得注入运行时结构化输出 Schema。调用参数必须包含验收文件路径、调用方指定的唯一 `args.acceptancePath` 报告路径和运行环境启动方式。acceptance-reviewer 先写入该指定报告，再返回唯一严格 JSON；主 agent 只读取报告用于门禁，验收者是该报告的唯一写入者。
+只有所有任务均为 `status: done` 且 `step: review` 才允许 `status: accepting`。此时主 agent 只能通过 Agent 工具直接调用 `acceptance-reviewer`；验收调用及其最终结果不得要求、启动、承载或传递于任何 workflow，发现任何此类前提必须失败关闭；不得注入运行时结构化输出 Schema。调用参数必须包含本次新增或修改的规则文件路径清单（来自 requirements.md 第 3 节）、调用方指定的唯一 `args.acceptancePath` 报告路径和运行环境启动方式；验收条目为这些规则文件“验收”节的全部条目，`items.id` 写 `<域>/<name>/AC-n`。acceptance-reviewer 先写入该指定报告，再返回唯一严格 JSON；主 agent 只读取报告用于门禁，验收者是该报告的唯一写入者。
 
 ### 直接 JSON 门禁与业务谓词
 
@@ -336,14 +336,14 @@ return { verdict: "PASS" }
 
 只有对象同时满足 `verdict: PASS`、`acceptanceResult: accepted`、`items` 非空且全部为 `PASS`、`issues` 与 `uncovered` 为空、`reportPath` 精确等于调用方路径，并且指定 `acceptance.md` frontmatter 为 `result: accepted` 时，才可将需求置为 `accepted`。JSON 无效或门禁失败时保留验收者已写入的本次报告，主 agent 不得转录、覆盖或回滚；具体原因写入 `status: failed` 与 `note: <原因>`，需求不得置为 `accepted`，停止后续动作，不自动重试或返修。直接 JSON 结果不写入需求目录。
 
-- `accepted` → 先合入现行规范：把本次每条 R 改写进 `.pi-spec/spec/<域>.md`（新增或替换），删除因此失效的规则，用本次 AC 替换过时例子，对该文件跑 lint；然后 `status: accepted`，规范与代码一起 commit，向用户汇报并交由用户决定是否推送。未合入规范不得置 `accepted`。
-- `rejected` → `status: rejected`，加载 spec-revise skill，对每个 FAIL 的 AC 归因并原地回退。
+- `accepted` → `status: accepted`，commit，向用户汇报并交由用户决定是否推送。规则文件在 draft 阶段已经是现行规范，没有合入步骤。
+- `rejected` → `status: rejected`，加载 spec-revise skill，对每个 FAIL 的验收项归因并原地回退。
 
 ## 断点续接（/spec-resume）
 
 1. 定位现场：扫描 `.pi-spec/requirements/*/requirements.md`，取 `status` 不为 `accepted` 的目录。恰一个直接续；多个用 `ask_user_question` 让用户选；零个报告“没有未完成的需求”并停止。
 2. 按 `status` 进入对应阶段：
-   - `draft`：依据当前文档内容重新识别缺失信息，从第一个缺失维度继续澄清；已写入的内容不重问。
+   - `draft`：依据当前规则文件与 requirements.md 重新识别缺失信息，从第一个缺失维度继续澄清；已写入的内容不重问。
    - `confirmed`：重派 planner（幂等覆盖）。
    - `planned`：重新计算并行组并汇报，直接进入 executing。
    - `accepting`：先执行旧任务扫描；若存在 `status: done` 且 `step != review`，退回 `executing` 并补审，不直接重跑验收；否则整体重跑验收。

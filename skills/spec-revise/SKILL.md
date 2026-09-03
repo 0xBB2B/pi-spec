@@ -5,12 +5,12 @@ description: 已有功能改动 / 修 bug / 结果与预期不符的处理流程
 
 # spec-revise：改动与修复的归因和路由
 
-系统现行行为以 `.pi-spec/spec/` 为准；`.pi-spec/requirements/` 下只读当前进行中的目录。本 skill 只做归因与路由，修改、执行与验收交给 spec-flow。
+系统现行行为以 `.pi-spec/spec/` 下的规则文件为准，先读 `spec/INDEX.md` 再打开相关规则；`.pi-spec/requirements/` 下只读当前进行中的目录。本 skill 只做归因与路由，修改、执行与验收交给 spec-flow。
 
 ## 第一步：复现与归因
 
 1. 按用户描述执行触发动作（命令 / 请求 / 操作），原样记录实际输出。
-2. 读取相关 `.pi-spec/spec/<域>.md`，找到对应规则与例子；找不到即"规范无此行为"。
+2. 读 `spec/INDEX.md`，打开相关规则文件，找到对应约束与验收；找不到即"规范无此行为"。
 3. 归因，只能选一：
 
 | 归因 | 判据 |
@@ -28,8 +28,8 @@ description: 已有功能改动 / 修 bug / 结果与预期不符的处理流程
 
 | 情况 | 处理 |
 |---|---|
-| 无进行中目录（历史代码，或相关需求已 accepted） | 开新需求目录，进入 spec-flow 阶段一。背景写清针对现行规范哪条规则的什么问题；修 bug 时把复现步骤直接写成 AC-1（Given 当前状态 / When 触发 / Then 正确行为） |
+| 无进行中目录（历史代码，或相关需求已 accepted） | 开新需求目录，进入 spec-flow 阶段一。背景写清针对哪个规则文件的什么问题；修 bug 时把复现步骤写成该规则文件的一条新验收（触发 / Given 当前状态 / When 触发 / Then 正确行为） |
 | 有进行中目录，归因为实现缺陷 | 按 `refs` 找到任务，`status: todo`、`note: <实际与期望的差异>`，需求 `status: executing`，进入 spec-flow 阶段四 |
-| 有进行中目录，归因为规范缺陷或需求变更 | 修订该目录 requirements.md 对应 R / AC，需求 `status: confirmed`，进入 spec-flow 阶段二（planner 增量规划） |
+| 有进行中目录，归因为规范缺陷或需求变更 | 修订对应规则文件的约束与验收并更新该目录 requirements.md 第 3 节，需求 `status: confirmed`，进入 spec-flow 阶段二（planner 增量规划） |
 
-已 accepted 的目录一律只读，不得为修复而回改其中任何文件；现行规范只在 spec-flow 阶段五 accepted 时合入更新。
+已 accepted 的目录一律只读，不得为修复而回改其中任何文件；规则文件的修订随新需求或原地回退在分支上进行。
