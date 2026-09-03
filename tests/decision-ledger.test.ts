@@ -4,7 +4,7 @@ import { readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createFixture as createSharedFixture, REQUIREMENT_SLUG, removeFixtures, requirementDocument, type Fixture } from "./helpers/requirement-fixture.ts";
+import { createFixture as createSharedFixture, REQUIREMENT_SLUG, removeFixtures, requirementDocument, specDocument, type Fixture } from "./helpers/requirement-fixture.ts";
 
 const PACKAGE_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const SPEC_DOCS_DIR = join(PACKAGE_ROOT, "skills", "spec-docs");
@@ -422,44 +422,44 @@ describe("canonical v1 decision ledger", () => {
     expect(await readFile(fixture.ai, "utf8")).toBe(failedPrefix);
   });
 
-  test("requirements template, lint, and skill define only the seven-section current contract and the draft package", async () => {
+  test("requirements template and skill define the four-section change note and the spec-first package", async () => {
     const [template, skill] = await Promise.all([Bun.file(TEMPLATE_PATH).text(), Bun.file(SKILL_PATH).text()]);
     const sections = [...template.matchAll(/^## (\d+)\./gm)].map(([, section]) => section);
 
-    expect(sections).toEqual(["1", "2", "3", "4", "5", "6", "7"]);
-    expect(template).not.toMatch(/^## 8\./m);
+    expect(sections).toEqual(["1", "2", "3", "4"]);
+    expect(template).toContain("## 3. 规范变更");
     expect(template).not.toContain("决策记录");
     expect(skill, "the documented requirement package must include separate AI and user ledgers").toMatch(
       /ai-decisions\.jsonl[\s\S]{0,180}user-decisions\.jsonl/,
     );
-    expect(skill, "requirements must remain only the current black-box contract").toMatch(
-      /requirements\.md[\s\S]{0,220}(?:当前|有效)[\s\S]{0,180}黑盒契约/,
-    );
-    expect(skill, "draft resume must rediscover missing information from its current contents").toMatch(
-      /draft[\s\S]{0,220}(?:当前内容|当前 draft)[\s\S]{0,220}(?:重新识别|重新澄清)[\s\S]{0,160}(?:缺失信息|缺失)/,
+    expect(skill, "spec files must be the single source of what the system does").toMatch(/spec\/[\s\S]{0,120}唯一事实源/);
+    expect(skill, "draft resume must rediscover missing information from current files").toMatch(
+      /draft[\s\S]{0,220}(?:当前规则文件|当前内容)[\s\S]{0,220}(?:重新识别|重新澄清)[\s\S]{0,160}(?:缺失信息|缺失)/,
     );
     expect(skill, "accepted packages freeze deliveries and only permit ledger append").toMatch(
       /accepted[\s\S]{0,280}(?:requirements|契约)[\s\S]{0,280}(?:tasks|任务)[\s\S]{0,280}(?:acceptance|验收)[\s\S]{0,280}(?:仅|只)[\s\S]{0,180}(?:台账|ledger)[\s\S]{0,160}(?:追加|append)/,
     );
   });
 
-  test("lint rejects an eighth decision section and incomplete R/AC coverage", async () => {
+  test("lint validates the change note against the spec files it lists", async () => {
     const fixture = await createSharedFixture(tempRoots);
     await writeFile(fixture.ai, jsonLine(canonicalAi("AI-001")));
     await writeFile(fixture.user, jsonLine(canonicalUser("USER-001")));
 
-    expect(await lint(fixture.requirements), "a complete seven-section canonical package must lint").toMatchObject({
-      exitCode: 0,
-    });
-    await writeFile(fixture.requirements, `${requirementDocument()}\n## 8. 决策记录\n\n不应在需求中保存历史。\n`);
-    expect(await lint(fixture.requirements), "lint must reject a decision-history section").not.toMatchObject({
-      exitCode: 0,
-    });
+    expect(await lint(fixture.requirements), "a four-section note with a valid spec file must lint").toMatchObject({ exitCode: 0 });
 
-    await writeFile(fixture.requirements, requirementDocument().replace("← R-1", "← R-99"));
-    expect(await lint(fixture.requirements), "lint must reject acceptance entries that do not cover a declared requirement").not.toMatchObject({
-      exitCode: 0,
-    });
+    await writeFile(fixture.requirements, `${requirementDocument()}\n## 5. 决策记录\n\n不应在需求中保存历史。\n`);
+    expect((await lint(fixture.requirements)).exitCode, "lint must reject a fifth section").not.toBe(0);
+    await writeFile(fixture.requirements, requirementDocument());
+
+    await writeFile(fixture.specFile, specDocument().replace("← C-2", "← C-99"));
+    expect((await lint(fixture.requirements)).exitCode, "lint must reject a spec acceptance that points at an undeclared constraint").not.toBe(0);
+    await writeFile(fixture.specFile, specDocument().replace("### AC-2 记录失败阻断动作  ← C-2", "### AC-2 记录失败阻断动作  ← C-1"));
+    expect((await lint(fixture.requirements)).exitCode, "lint must reject a constraint that no acceptance covers").not.toBe(0);
+    await writeFile(fixture.specFile, specDocument());
+
+    await writeFile(fixture.specIndex, "# 规范索引\n");
+    expect((await lint(fixture.requirements)).exitCode, "lint must reject a listed spec file missing from INDEX").not.toBe(0);
   });
 
   test("lint and the writer reject legacy event/status records rather than parsing or rewriting them", async () => {
