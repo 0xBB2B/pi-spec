@@ -11,7 +11,7 @@ description: 完整 PR/MR 提交流程在本地 commit 后直接调用 pre-revie
 
 - commit 标题和 PR 标题分别根据各自用途生成；
 - PR 正文聚焦可审阅信息，并以真实的测试、release note、issue 关联和 reviewer 安排为依据；
-- 任何 push 或 PR/MR 创建前必须先完成第 7 节的 pre-reviewer 审查；只有严格 JSON 明确的 `verdict: PASS` 且审查快照一致时才可继续，不可用、失败或未通过时一律停止。
+- 任何 push 或 PR/MR 创建前必须先完成第 7 节的 pre-reviewer 审查；只有严格 JSON 明确的 `verdict: PASS` 且审查快照一致时才可继续。不可用、调用失败、回复非法或快照不一致时 fail closed；合法严格 JSON `verdict: FAIL` 按第 7 节的归因、自动返修或产品升级路径处理。
 
 ## 适用边界
 
@@ -484,18 +484,32 @@ if (result.verdict === "FAIL"
   return failClosed("FAIL 缺少 issues 或 blockingFindings")
 }
 if (result.verdict === "FAIL") {
-  return failClosed(`审查明确 FAIL：${result.issues.join("；")}`)
+  return { verdict: "FAIL", preReviewResult: result }
 }
 return { verdict: "PASS", preReviewResult: result }
 ```
 
-解析、字段、类型、枚举、语义或快照校验任一失败，都返回明确的 FAIL 原因；保留本地 commit，立即停止，不得执行 push 或创建 PR/MR。直接回复及校验结果只在当前流程内存中传递，不写入报告、JSON、Markdown、requirements 或其他文件。
+解析、字段、类型、枚举、语义或快照校验任一失败，都返回明确的 FAIL 原因；保留本地 commit，立即停止，不得执行 push 或创建 PR/MR。只有通过上述完整校验的合法严格 JSON `verdict: FAIL` 才进入下面的归因与返修路径。直接回复及校验结果只在当前流程内存中传递，不写入报告、JSON、Markdown、requirements 或其他文件。
+
+#### 合法 FAIL 的归因、自动返修与产品升级
+
+- `pre-reviewer` 返回合法 FAIL 后，主 agent 逐条归因；审查角色保持只读。当前改动直接造成且违反当前目标的问题才进入当前返修；与当前目标和根因可独立验证的问题必须分流为独立后续任务，不得扩大当前返修范围。
+- pre-reviewer 返回合法 FAIL 后，主 agent 逐条归因；可自动解决的问题在 AI 决策台账记录成功后，自动派发所需的测试或实现修复并完成必要验证。
+- 自动派修只交给 `test-engineer` 或 `impl-engineer`，不得让 `pre-reviewer` 修改文件。派修前由主 agent 校验用户已授权的目标、文件范围和验收标准；归因与修复路径必须先通过 `decision_record` 记录，台账追加失败时显示原因且不得派发修复。
+- 返修改动必须按 git-commit 约定形成新的本地提交，重新采集 REVIEW_HEAD 与 REVIEW_FINGERPRINT，再直接调用 pre-reviewer；取得并复核绑定新快照的严格 JSON PASS 前，远端写入保持为 0。
+- 每一个新提交都必须重新运行项目规定的验证；新提交完成后丢弃旧的 `REVIEW_HEAD`、`REVIEW_FINGERPRINT` 与旧 PASS，重新采集完整快照并直接调用只读 `pre-reviewer`。重审必须复用第 7 节完整 JSON 校验，不得从自然语言、旧快照或旧 PASS 放行。
+- pre-reviewer 门禁独立计数，一次归因、修复派发并再次直接调用 pre-reviewer 计为一轮，最多三轮。
+- 修复派发失败、重审结果非法或证据不足均计入当前门禁的一轮并按未通过处理；第三轮仍未通过时报告技术阻塞并停止，不再返修，不询问用户如何解决纯技术问题，也不写机械状态决定。
+- 问题会改变外部可观察行为、数据、安全、权限或验收标准，修复超出已授权目标、文件范围或验收标准，或无法由已确认规范与项目惯例唯一推导时，必须向用户展示具体选项、适用场景、代价和推荐项。
+- 用户忽略、取消或未回答时，不新增任何决策台账行，也不修改相关行为；用户明确选择后，必须先通过 decision_record 追加一行完整用户决定，再执行修复。
+
+合法 FAIL 的产品升级必须暂停当前门禁的远端写入。用户作出明确选择并且 `decision_record` 返回成功后，才可按所选行为派修；仍须完成新的本地提交、新快照和直接重审。用户未形成选择时保持本地现状不变。
 
 只有上述完整校验通过且 verdict 为 PASS 时才可放行。PASS 后、push 前和 PR/MR 创建前，调用方必须立即使用上述同一套 fail-closed 快照过程重新计算当前 HEAD 和当前内容指纹，并分别与 REVIEW_HEAD、REVIEW_FINGERPRINT 精确比较；任一采集命令失败、值变化或不一致都使原 PASS 失效。不得把 pre-reviewer 自报的快照替代调用方复核；复核失败时保留本地 commit，停止远端写入，并对变化后的完整内容重新启动 pre-reviewer。
 
 初次 push 后、PR/MR 创建前，若 HEAD、工作区或指纹发生变化，旧 PASS 立即失效，禁止创建 PR/MR。若存在未提交的 tracked 或 untracked 变化，必须先回到既有范围检查/预检、项目验证、用户确认和本地 commit；不得直接 push 未提交内容。形成新的本地 commit/新的待推送 HEAD 后，重新记录完整快照，重新直接调用 pre-reviewer，取得严格 JSON verdict PASS，再由调用方复核；复核一致后回到第 8 节重新 push。每一次新 commit 都必须重复“新 HEAD → 完整快照 → 直接 pre-reviewer → 严格 JSON PASS → 复核”的顺序。
 
-任何调用失败、空值、非法对象、矛盾、不一致或明确 FAIL 均保留本地 commit，立即停止，不得执行 push 或创建 PR/MR。
+任何初次调用失败、空值、非法对象、矛盾或快照不一致均保留本地 commit，立即停止，不得执行 push 或创建 PR/MR；合法严格 JSON `verdict: FAIL` 按本节的归因、返修、产品升级和三轮上限处理。
 ### 8. 推送分支
 
 commit 成功后再次检查：
@@ -584,7 +598,7 @@ glab mr create \
 - 当前位于默认分支或主分支时，必须先完成分支切换询问；用户拒绝切换、未确认分支名或切换失败时，停止，不创建 commit、不 push、不创建 PR/MR；
 - 无法读取仓库贡献规范时，不猜测，说明缺失项并使用最小 fallback，必要时询问用户；
 - 已有开放 PR/MR：输出已有 URL，不创建重复对象；
-- 第 7 节 pre-reviewer 审查不可用、执行失败、结果缺失、未明确 PASS 或未通过：保留本地 commit，停止 push 和 PR/MR 创建；
+- 第 7 节初次 pre-reviewer 审查不可用、执行失败、结果缺失、回复非法或快照不匹配：保留本地 commit，停止 push 和 PR/MR 创建；合法严格 JSON `verdict: FAIL` 转入第 7 节的归因、自动返修或产品升级路径；
 - push 被拒绝：保留本地结果，报告远端分叉或权限问题，不强推；
 - CLI 创建失败：保留 commit 和已推送分支，删除正文临时文件，报告完整错误；不要改写 commit 来“重试”；
 - 任一步骤产生的临时文件、日志或输出文件在结束前清理，不把它们加入 commit。
