@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "pi 的需求驱动开发流程包：spec-flow / spec-docs / spec-revise / spec-sync / git-commit / git-push 技能、TDD 子代理定义、提示模板与流程规则注入",
   "type": "module",
+  "license": "MIT",
   "keywords": [
     "pi-package",
     "spec",
@@ -15,7 +16,8 @@
     "prompts",
     "rules",
     "skills",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "test": "bun test tests"
