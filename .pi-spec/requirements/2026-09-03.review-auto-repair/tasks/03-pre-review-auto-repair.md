@@ -6,10 +6,10 @@ files: [/Users/bb/Projects/pi-spec/skills/git-push/SKILL.md, /Users/bb/Projects/
 refs: [review-gates/auto-repair/AC-2, review-gates/product-decision-escalation/AC-1, review-gates/repair-round-limit/AC-1]
 parallel: true
 verify: bun test tests/git-push-auto-repair.test.ts
-status: todo
-step: test
-agent:
-commit:
+status: done
+step: review
+agent: wf_bb1fb47b789d
+commit: ff967e9
 note:
 ---
 

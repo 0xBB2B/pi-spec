@@ -6,10 +6,10 @@ files: [/Users/bb/Projects/pi-spec/skills/spec-flow/SKILL.md, /Users/bb/Projects
 refs: [review-gates/auto-repair/AC-1, review-gates/auto-repair/AC-3, review-gates/auto-repair/AC-4]
 parallel: true
 verify: bun test tests/spec-flow-auto-repair.test.ts
-status: todo
-step: test
-agent:
-commit:
+status: done
+step: review
+agent: wf_ab8f93235e7c
+commit: e8ed2fb
 note:
 ---
 

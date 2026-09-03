@@ -6,10 +6,10 @@ files: [/Users/bb/Projects/pi-spec/rules/05-review-failure-handling.md, /Users/b
 refs: [review-gates/failure-attribution/AC-1, review-gates/failure-attribution/AC-2, review-gates/independent-issue-task/AC-1]
 parallel: true
 verify: bun test tests/review-failure-handling.test.ts
-status: todo
-step: test
-agent:
-commit:
+status: done
+step: review
+agent: wf_db5afe564a51
+commit: 404b41d
 note:
 ---
 

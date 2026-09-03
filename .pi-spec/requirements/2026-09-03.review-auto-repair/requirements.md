@@ -1,7 +1,7 @@
 ---
 name: review-auto-repair
 title: 审查未通过的自动归因与有界返修
-status: planned
+status: accepted
 created: 2026-09-03
 ---
 
