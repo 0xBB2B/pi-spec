@@ -5,7 +5,6 @@ description: TDD 测试工程师，负责 Red 阶段。根据任务中的需求�
 tools: read, bash, grep, find, ls, edit, write
 extensions: false
 skills: true
-model: gpt-5.6-terra
 prompt_mode: append
 ---
 
