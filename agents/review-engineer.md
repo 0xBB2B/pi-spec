@@ -5,7 +5,6 @@ description: 需求与 TDD 只读审查工程师。逐条核对需求、验收�
 tools: read, bash, grep, find, ls
 extensions: false
 skills: true
-model: gpt-5.6-terra
 prompt_mode: append
 ---
 

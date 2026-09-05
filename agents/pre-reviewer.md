@@ -5,7 +5,6 @@ description: PR 前只读审查者。检查当前分支相对基线的完整改�
 tools: read, bash, grep, find, ls
 extensions: false
 skills: true
-model: glm-5.2
 prompt_mode: append
 ---
 

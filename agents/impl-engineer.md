@@ -5,7 +5,6 @@ description: TDD 实现工程师，负责 Green 与必要重构。先复现任�
 tools: read, bash, grep, find, ls, edit, write
 extensions: false
 skills: true
-model: gpt-5.6-luna
 prompt_mode: append
 ---
 

@@ -5,7 +5,6 @@ description: 白盒设计与任务拆解者。读已确认的黑盒需求文档�
 tools: read, bash, grep, find, ls, write, edit
 extensions: false
 skills: true
-model: gpt-5.6-sol
 thinking: medium
 prompt_mode: append
 ---

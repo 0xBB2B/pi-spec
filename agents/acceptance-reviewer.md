@@ -5,7 +5,6 @@ description: 黑盒验收者。只依据给定规则文件的验收条目，在�
 tools: read, bash, write
 extensions: false
 skills: false
-model: qwen3.8-max
 prompt_mode: append
 ---
 
