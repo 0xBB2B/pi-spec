@@ -10,3 +10,7 @@
 - [product-decision-escalation](review-gates/product-decision-escalation.md) — 只有会改变外部行为、数据、安全、权限或验收标准的审查问题才询问用户，未回答的问题不留痕
 - [repair-round-limit](review-gates/repair-round-limit.md) — 同一审查门禁的自动返修最多三轮，第三轮仍未通过即记录技术阻塞并停止
 - [strict-json-verdict](review-gates/strict-json-verdict.md) — 直接审查角色的完整最终回复必须是唯一严格 JSON 对象，任何偏差都失败关闭
+
+## task-planning
+
+- [task-file-line-limit](task-planning/task-file-line-limit.md) — 每份任务文件扣除示例及成品代码块后最多 200 行，不限制任务的代码改动量
