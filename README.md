@@ -130,13 +130,18 @@ pi package 只能分发 extensions、skills、prompts、themes 四类资源。pi
 - 指向本包但源文件已不存在的旧链接：删除。
 
 **子代理用的模型能换吗？**
-各 agent 定义的 `model:` 字段指向作者自己的 provider 别名，安装到其他环境时按本机 provider 调整。
+各 agent 定义不写 `model:` 字段，子代理沿用主会话当前的模型。要单独指定，在对应 agent 定义的 frontmatter 里加 `model: <provider/modelId 或模糊名>`。
 
 **主 agent 会在没确认的情况下改代码吗？**
 不会。注入的执行授权规则要求在写入任何文件前先说明理解、范围与验证方式并取得批准；目标或范围变化时重新取得批准。
 
 **怎么卸载？**
-执行 `pi remove <source>`，再删除 `~/.pi/agent/agents/` 下指向本包的链接。
+pi 没有卸载钩子：`pi remove` 只是把包从 settings.json 里移除，不会运行本包任何代码，所以链接到 `~/.pi/agent/agents/` 的子代理定义不会随之清掉。桥接逻辑只在会话启动时清理源文件已不存在的死链，从本地路径安装时源文件一直在，链接会一直有效，pi-subagents 也会继续加载这些角色。卸载需要两步：
+
+```bash
+pi remove <source>
+find ~/.pi/agent/agents -type l -lname '*/pi-spec/agents/*' -delete
+```
 
 ## 开发
 
