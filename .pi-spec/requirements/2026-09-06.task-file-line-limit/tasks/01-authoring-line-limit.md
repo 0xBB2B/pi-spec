@@ -6,10 +6,10 @@ files: [/Users/bb/Projects/pi-spec-task-file-line-limit/skills/spec-docs/SKILL.m
 refs: [task-planning/task-file-line-limit/AC-1, task-planning/task-file-line-limit/AC-2, task-planning/task-file-line-limit/AC-3]
 parallel: true
 verify: cd /Users/bb/Projects/pi-spec-task-file-line-limit && bun test tests/task-file-line-limit-authoring.test.ts
-status: todo
-step: test
-agent: ""
-commit: ""
+status: done
+step: review
+agent: wf_ed05d79e1044
+commit: e3c4eac1057624c38051fb69b97828fce0fb9dd1
 note: ""
 ---
 
