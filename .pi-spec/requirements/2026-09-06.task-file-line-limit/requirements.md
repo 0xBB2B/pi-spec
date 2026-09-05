@@ -1,7 +1,7 @@
 ---
 name: task-file-line-limit
 title: 任务文件 200 行计数口径
-status: confirmed
+status: planned
 created: 2026-09-06
 ---
 
